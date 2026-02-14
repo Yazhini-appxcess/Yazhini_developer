@@ -1,0 +1,12 @@
+# Minimal dockerignore to avoid context issues
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+.git/
+data/
+tests/
+.vscode/
+.idea/
+*.log
