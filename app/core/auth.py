@@ -2,16 +2,20 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
+import logging
 import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from pydantic_settings import BaseSettings
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class AuthSettings(BaseSettings):
@@ -74,11 +78,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Get the current authenticated user from JWT token."""
+async def verify_token(token: str, db: AsyncSession) -> User:
+    """Verify a JWT token and return the user."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -86,26 +87,33 @@ async def get_current_user(
     )
     
     try:
-        token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        # logger.info(f"DEBUG AUTH: Verifying token for email: {email}") 
         if email is None:
             raise credentials_exception
-    except JWTError:
+    except JWTError as e:
+        # logger.error(f"DEBUG AUTH: JWT Error: {e}") 
         raise credentials_exception
     
     # 1. Try to look up user in database FIRST
-    # This ensures we get the real user ID for foreign keys
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.permissions))
+        .where(User.email == email)
+    )
     user = result.scalar_one_or_none()
     
     if user:
+        print(f"DEBUG AUTH: User found in DB: {user.email}") # DEBUG LOG
         return user
 
-    # 2. Fallback: Check if it's the hardcoded superadmin
-    # Only use this if user is NOT in DB
+    # 2. Fallback: Check if it's the hardcoded superadmin or master
     HARDCODED_SUPER_ADMIN_EMAIL = "superadmin@gmail.com"
+    HARDCODED_MASTER_EMAIL = "master@leucadia.com"
     
+    # logger.info(f"DEBUG AUTH: Checking hardcoded: {email} against {HARDCODED_SUPER_ADMIN_EMAIL} and {HARDCODED_MASTER_EMAIL}") # DEBUG LOG
+
     if email == HARDCODED_SUPER_ADMIN_EMAIL:
         # Create a mock User object for hardcoded super admin
         hardcoded_admin = User(
@@ -117,11 +125,37 @@ async def get_current_user(
             last_name="Admin",
             password="",  # Not used for hardcoded admin
             is_superuser=True,
+            permissions=[],
         )
         return hardcoded_admin
+
+    if email == HARDCODED_MASTER_EMAIL:
+        # Create a mock User object for hardcoded master
+        # logger.info("DEBUG AUTH: MATCHED master email") # DEBUG LOG
+        hardcoded_master = User(
+            id=1, # Distinct ID from superadmin
+            email=HARDCODED_MASTER_EMAIL,
+            username="master",
+            slug="master",
+            first_name="Master",
+            last_name="Account",
+            password="",
+            is_superuser=True,
+            permissions=[],
+        )
+        return hardcoded_master
     
     # If neither found
+    # logger.info("DEBUG AUTH: No user found, raising 401") # DEBUG LOG
     raise credentials_exception
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Get the current authenticated user from JWT token."""
+    return await verify_token(credentials.credentials, db)
 
 
 async def get_current_admin(

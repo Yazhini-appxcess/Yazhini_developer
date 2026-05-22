@@ -96,6 +96,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEBUG: ${DEBUG:-false}
       APP_ENV: ${APP_ENV:-production}
+      API_URL: ${API_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI:-http://localhost:8000/api/zoho/callback}
 
     volumes:
       - ./data:/app/data

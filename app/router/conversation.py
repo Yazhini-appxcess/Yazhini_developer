@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from app.schema.conversation import ConversationListResponse, ConversationSchema, MessageSchema
 from app.core.mongodb import mongodb_settings
 from app.core.database import get_db
+from app.core.logging_utils import log_activity
+from app.core.auth import get_current_admin
+from app.models.user import User
 from app.models.form_submission import FormSubmission
 from bson import ObjectId
 
@@ -27,7 +30,7 @@ async def list_user_conversations(
         conversations_collection = db_mongo["conversations"]
         
         # Build query
-        query = {"session_id": session_id}
+        query = {"session_id": session_id, "is_deleted": {"$ne": True}}
         if agent_type:
             query["agent_type"] = agent_type
             
@@ -94,7 +97,7 @@ async def list_conversations(
         conversations_collection = db_mongo["conversations"]
         
         # Build query
-        query = {}
+        query = {"is_deleted": {"$ne": True}}
         if website_url:
             query["website_url"] = website_url
         if agent_type:
@@ -138,14 +141,20 @@ async def list_conversations(
                     MessageSchema(**msg) for msg in conv.get("messages", [])
                 ],
                 "created_at": conv.get("created_at", datetime.utcnow()),
-                "updated_at": conv.get("updated_at", datetime.utcnow())
+                "updated_at": conv.get("updated_at", datetime.utcnow()),
+                "user_name": conv.get("user_name"),
+                "user_email": conv.get("user_email"),
+                "user_phone": conv.get("user_phone")
             }
             
-            # Add form submission data if exists
+            # Add form submission data if exists and not already provided by conversation doc
             if form_submission:
-                conversation_data["user_name"] = form_submission.name
-                conversation_data["user_email"] = form_submission.email
-                conversation_data["user_phone"] = form_submission.phone
+                if not conversation_data.get("user_name"):
+                    conversation_data["user_name"] = form_submission.name
+                if not conversation_data.get("user_email"):
+                    conversation_data["user_email"] = form_submission.email
+                if not conversation_data.get("user_phone"):
+                    conversation_data["user_phone"] = form_submission.phone
             
             conversation_list.append(ConversationSchema(**conversation_data))
         
@@ -193,14 +202,20 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
                 MessageSchema(**msg) for msg in conversation.get("messages", [])
             ],
             "created_at": conversation.get("created_at", datetime.utcnow()),
-            "updated_at": conversation.get("updated_at", datetime.utcnow())
+            "updated_at": conversation.get("updated_at", datetime.utcnow()),
+            "user_name": conversation.get("user_name"),
+            "user_email": conversation.get("user_email"),
+            "user_phone": conversation.get("user_phone")
         }
         
-        # Add form submission data if exists
+        # Add form submission data if exists and not already provided by conversation doc
         if form_submission:
-            conversation_data["user_name"] = form_submission.name
-            conversation_data["user_email"] = form_submission.email
-            conversation_data["user_phone"] = form_submission.phone
+            if not conversation_data.get("user_name"):
+                conversation_data["user_name"] = form_submission.name
+            if not conversation_data.get("user_email"):
+                conversation_data["user_email"] = form_submission.email
+            if not conversation_data.get("user_phone"):
+                conversation_data["user_phone"] = form_submission.phone
         
         return ConversationSchema(**conversation_data)
         
@@ -212,20 +227,45 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
 
 
 @router.delete("/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    """Delete a conversation."""
+async def delete_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Delete a conversation (soft delete)."""
     try:
-        db = mongodb_settings.get_database()
-        conversations_collection = db["conversations"]
+        db_mongo = mongodb_settings.get_database()
+        conversations_collection = db_mongo["conversations"]
         
-        result = await conversations_collection.delete_one(
-            {"_id": ObjectId(conversation_id)}
+        # Get conversation info for logging BEFORE deleting
+        conversation = await conversations_collection.find_one({"_id": ObjectId(conversation_id)})
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+        session_id = conversation.get("session_id")
+        user_name = conversation.get("user_name") or conversation.get("user_email") or session_id
+        
+        result = await conversations_collection.update_one(
+            {"_id": ObjectId(conversation_id)},
+            {"$set": {"is_deleted": True, "deleted_at": datetime.utcnow()}}
         )
         
-        if result.deleted_count == 0:
+        if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        return {"message": "Conversation deleted successfully"}
+        # Log activity
+        await log_activity(
+            db,
+            action="DELETE_CONVERSATION",
+            user_id=current_user.id,
+            details={
+                "conversation_id": conversation_id,
+                "session_id": session_id,
+                "user_name": user_name
+            }
+        )
+        
+        return {"message": "Conversation moved to backup"}
         
     except HTTPException:
         raise
@@ -255,7 +295,7 @@ async def save_conversation(
         # Find existing ongoing conversation (not ended)
         query_filter = {
             "session_id": session_id,
-            "ended": False
+            "ended": {"$ne": True}
         }
         if agent_type:
             query_filter["agent_type"] = agent_type
@@ -372,6 +412,133 @@ async def save_conversation(
     except Exception as e:
         logger.error(f"Error saving conversation: {e}")
         raise HTTPException(status_code=500, detail=f"Error saving conversation: {str(e)}")
+
+
+@router.get("/backup/list", response_model=ConversationListResponse)
+async def list_backups(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_admin)
+):
+    """List deleted conversations (backups)."""
+    try:
+        db_mongo = mongodb_settings.get_database()
+        conversations_collection = db_mongo["conversations"]
+        
+        query = {"is_deleted": True}
+        
+        cursor = conversations_collection.find(query).sort("deleted_at", -1).skip(skip).limit(limit)
+        conversations = await cursor.to_list(length=limit)
+        total = await conversations_collection.count_documents(query)
+        
+        conversation_list = []
+        for conv in conversations:
+            conversation_data = {
+                "id": str(conv["_id"]),
+                "session_id": conv["session_id"],
+                "agent_type": conv.get("agent_type", "external"),
+                "website_url": conv.get("website_url"),
+                "messages": [
+                    MessageSchema(**msg) for msg in conv.get("messages", [])
+                ],
+                "created_at": conv.get("created_at", datetime.utcnow()),
+                "updated_at": conv.get("updated_at", datetime.utcnow()),
+                "user_name": conv.get("user_name"),
+                "user_email": conv.get("user_email")
+            }
+            conversation_list.append(ConversationSchema(**conversation_data))
+            
+        return ConversationListResponse(conversations=conversation_list, total=total)
+    except Exception as e:
+        logger.error(f"Error listing backups: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing backups: {str(e)}")
+
+
+@router.post("/{conversation_id}/restore")
+async def restore_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Restore a deleted conversation."""
+    try:
+        db_mongo = mongodb_settings.get_database()
+        conversations_collection = db_mongo["conversations"]
+        
+        # Get conversation info for logging
+        conversation = await conversations_collection.find_one({"_id": ObjectId(conversation_id)})
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+        session_id = conversation.get("session_id")
+        user_name = conversation.get("user_name") or conversation.get("user_email") or session_id
+        
+        result = await conversations_collection.update_one(
+            {"_id": ObjectId(conversation_id)},
+            {"$set": {"is_deleted": False, "deleted_at": None}}
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+        # Log activity
+        await log_activity(
+            db,
+            action="RESTORE_CONVERSATION",
+            user_id=current_user.id,
+            details={
+                "conversation_id": conversation_id,
+                "session_id": session_id,
+                "user_name": user_name
+            }
+        )
+        
+        return {"message": "Conversation restored successfully"}
+    except Exception as e:
+        logger.error(f"Error restoring conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error restoring conversation: {str(e)}")
+
+
+@router.delete("/{conversation_id}/permanent")
+async def permanent_delete_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Permanently delete a conversation from the database."""
+    try:
+        db_mongo = mongodb_settings.get_database()
+        conversations_collection = db_mongo["conversations"]
+        
+        # Get info for logging
+        conversation = await conversations_collection.find_one({"_id": ObjectId(conversation_id)})
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+        session_id = conversation.get("session_id")
+        user_name = conversation.get("user_name") or conversation.get("user_email") or session_id
+        
+        result = await conversations_collection.delete_one({"_id": ObjectId(conversation_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+            
+        # Log activity
+        await log_activity(
+            db,
+            action="PERMANENT_DELETE_CONVERSATION",
+            user_id=current_user.id,
+            details={
+                "conversation_id": conversation_id,
+                "session_id": session_id,
+                "user_name": user_name
+            }
+        )
+        
+        return {"message": "Conversation permanently deleted"}
+    except Exception as e:
+        logger.error(f"Error permanently deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error permanently deleting conversation: {str(e)}")
 
 
 @router.post("/end")

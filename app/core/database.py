@@ -64,7 +64,11 @@ class DatabaseSessionManager:
         self.engine: AsyncEngine | None = engine
         # Create a SessionLocal class
         self._sessionmaker: async_sessionmaker[AsyncSession] | None = async_sessionmaker(
-            autocommit=False, class_=AsyncSession, autoflush=False, bind=self.engine
+            autocommit=False, 
+            class_=AsyncSession, 
+            autoflush=False, 
+            bind=self.engine,
+            expire_on_commit=False  # Crucial for async to prevent MissingGreenlet errors
         )
 
     async def close(self) -> None:

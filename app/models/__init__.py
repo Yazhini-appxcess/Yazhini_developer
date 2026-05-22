@@ -1,13 +1,14 @@
-from sqlalchemy.orm import DeclarativeBase
-
-
-# Modern approach (SQLAlchemy 2.0+)
-class Base(DeclarativeBase):
-    pass
+from app.core.database import Base
 
 
 # Register the models for Migration
-from . import user  # noqa: E402, F401
-from . import document  # noqa: E402, F401
-from . import form_submission  # noqa: E402, F401
-from . import ai_config  # noqa: E402, F401
+from app.models.user import User  # noqa: F401
+from app.models.document import Document  # noqa: F401
+from app.models.form_submission import FormSubmission  # noqa: F401
+from app.models.ai_config import AIConfig  # noqa: F401
+from app.models.permission import Permission, user_permissions  # noqa: F401
+from app.models.activity_log import ActivityLog  # noqa: F401
+from app.models.settings import OrganizationSettings  # noqa: F401
+from app.models.integration import IntegrationService  # noqa: F401
+from app.models.website import WebsiteConfig  # noqa: F401
+from app.models.zoho_config import ZohoConfig  # noqa: F401

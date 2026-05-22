@@ -1,8 +1,9 @@
 import logging
 import os
 import shutil
-from typing import Annotated, List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from typing import Annotated, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -12,6 +13,8 @@ from app.core.database import get_db
 from app.core.auth import get_current_admin
 from app.models.document import Document, DocumentChunk
 from app.models.user import User
+from app.models.permission import Permission
+from app.core.logging_utils import log_activity
 from app.schema.document import DocumentResponse, QueryRequest, QueryResponse, ScrapeUrlRequest
 from app.services.document_processor import DocumentProcessor
 from app.services.embedding_service import EmbeddingService
@@ -63,6 +66,14 @@ async def upload_document(
     current_user: User = Depends(get_current_admin)
 ):
     """Upload and process a document for AI training"""
+    # Check permission
+    permission_names = [p.name for p in current_user.permissions]
+    if not current_user.is_superuser and "document_uploading" not in permission_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to upload documents"
+        )
+
     try:
         # Save file temporarily to extract text/check sensitive data
         file_path = UPLOAD_DIR / file.filename
@@ -176,6 +187,14 @@ async def upload_document(
 
             logger.info(f"Successfully processed document: {document_name} ({len(chunks_data)} chunks)")
 
+            # Log activity
+            await log_activity(
+                db,
+                action="UPLOAD_DOCUMENT",
+                user_id=uploaded_by_id,
+                details={"filename": document_name, "agent_type": agent_type}
+            )
+
         except Exception as e:
             logger.error(f"Error processing document: {e}")
             document.error_message = str(e)
@@ -203,6 +222,7 @@ async def upload_document(
             "mime_type": document.mime_type,
             "agent_type": document.agent_type,
             "processed": document.processed,
+            "text_content": document.text_content,
             "uploaded_by": document.uploaded_by,
             "created_at": document.created_at,
             "updated_at": document.updated_at,
@@ -251,6 +271,7 @@ async def list_documents(
             "mime_type": doc.mime_type,
             "agent_type": doc.agent_type,
             "processed": doc.processed,
+            "text_content": doc.text_content,
             "uploaded_by": doc.uploaded_by,
             "created_at": doc.created_at,
             "updated_at": doc.updated_at,
@@ -270,9 +291,18 @@ async def list_documents(
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: int,
-    db: Annotated[AsyncSession, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = Depends(get_current_admin)
 ):
     """Delete a document and its chunks"""
+    # Check permission
+    permission_names = [p.name for p in current_user.permissions]
+    if not current_user.is_superuser and "document_deletion" not in permission_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete documents"
+        )
+
     result = await db.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
 
@@ -286,8 +316,22 @@ async def delete_document(
     if os.path.exists(document.file_path):
         os.remove(document.file_path)
 
+    # Capture info for logging
+    doc_name = document.name
+    doc_id = document.id
+    uploaded_by = current_user.id
+
     await db.delete(document)
     await db.commit()
+
+    # Log activity
+    await log_activity(
+        db,
+        action="DELETE_DOCUMENT",
+        user_id=uploaded_by,
+        details={"filename": doc_name, "document_id": doc_id}
+    )
+
     return None
 
 
@@ -390,10 +434,36 @@ async def query_documents(
     # Generate LLM response
     llm_service = get_llm_service()
 
-    answer = llm_service.generate_response(
+    # CRITICAL: generate_response is async, so we must await it
+    llm_result = await llm_service.generate_response(
         request.query,
         context_chunks
     )
+    
+    answer = llm_result["content"]
+    token_usage = llm_result["usage"]
+    
+    # Log token usage
+    try:
+        from app.core.mongodb import mongodb_settings
+        from datetime import datetime
+        
+        db_mongo = mongodb_settings.get_database()
+        usage_collection = db_mongo["token_usage"]
+        
+        await usage_collection.insert_one({
+            "session_id": "document_query", # No session ID for direct queries
+            "agent_type": "document_query",
+            "timestamp": datetime.utcnow(),
+            "prompt_tokens": token_usage["prompt_tokens"],
+            "completion_tokens": token_usage["completion_tokens"],
+            "total_tokens": token_usage["total_tokens"],
+            "model": llm_service.model,
+            "source": "document_query",
+            "query": request.query[:100]  # Store first 100 chars of query for context
+        })
+    except Exception as e:
+        logger.error(f"Failed to log token usage: {e}")
 
     # Prepare sources
     sources = list(sources_map.values())
@@ -412,6 +482,14 @@ async def scrape_url(
     current_user: User = Depends(get_current_admin)
 ):
     """Scrape content from a website URL and process it for AI training"""
+    # Check permission
+    permission_names = [p.name for p in current_user.permissions]
+    if not current_user.is_superuser and "document_uploading" not in permission_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to scrape URLs"
+        )
+
     try:
         # Scrape the URL
         scraper = WebScraper()
@@ -481,6 +559,14 @@ async def scrape_url(
 
             logger.info(f"Successfully processed scraped URL: {request.url} ({len(chunks_data)} chunks)")
 
+            # Log activity
+            await log_activity(
+                db,
+                action="SCRAPE_URL",
+                user_id=uploaded_by_id,
+                details={"url": request.url, "agent_type": request.agent_type}
+            )
+
         except Exception as e:
             logger.error(f"Error processing scraped URL: {e}")
             document.error_message = str(e)
@@ -508,6 +594,7 @@ async def scrape_url(
             "mime_type": document.mime_type,
             "agent_type": document.agent_type,
             "processed": document.processed,
+            "text_content": document.text_content,
             "uploaded_by": document.uploaded_by,
             "created_at": document.created_at,
             "updated_at": document.updated_at,
@@ -530,6 +617,47 @@ async def scrape_url(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error scraping URL: {str(e)}"
+    )
+
+
+@router.get("/{document_id}/file")
+async def get_document_file(
+    document_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    disposition: str = Query("attachment", pattern="^(inline|attachment)$"),
+    token: Optional[str] = Query(None)
+):
+    """Retrieve the actual file for viewing or downloading"""
+    # Verify token manually if provided in query string (for direct <a> tag access)
+    from app.core.auth import verify_token
+    
+    user = None
+    if token:
+        try:
+            user = await verify_token(token, db)
+        except:
+            pass
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid authentication token required"
+        )
+
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not os.path.exists(document.file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    return FileResponse(
+        document.file_path,
+        media_type=document.mime_type,
+        filename=document.name if disposition == "attachment" else None,
+        content_disposition_type=disposition
     )
 
 

@@ -19,6 +19,9 @@ class Conversation(BaseModel):
     user_ip: Optional[str] = None
     user_agent: Optional[str] = None
     messages: List[Message] = Field(default_factory=list)
+    ended: bool = False
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     

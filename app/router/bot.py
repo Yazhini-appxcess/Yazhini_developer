@@ -13,10 +13,21 @@ from app.models.conversation import Conversation, Message
 from app.services.llm_service import LLMService
 from app.services.vector_store import VectorStore
 from app.services.embedding_service import EmbeddingService
+from app.models.settings import OrganizationSettings
 from datetime import datetime
 from bson import ObjectId
+import tiktoken
 
 router = APIRouter(prefix="/api/bot", tags=["bot"])
+
+
+def count_tokens(text: str, model: str = "gpt-4o-mini") -> int:
+    """Count tokens for a given text and model."""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    return len(encoding.encode(text))
 
 
 def generate_session_id(request: Request) -> str:
@@ -51,13 +62,18 @@ async def bot_chat(
         # Get or create conversation
         session_id = bot_request.session_id or generate_session_id(http_request)
         
-        # Find existing conversation for this session AND agent type
-        conversation_doc = await conversations_collection.find_one(
+        # Find existing conversation for this session, agent type, AND not ended
+        # Handle cases where 'ended' might be missing in older docs
+        cursor = conversations_collection.find(
             {
                 "session_id": session_id,
-                "agent_type": bot_request.agent_type
+                "agent_type": bot_request.agent_type,
+                "ended": {"$ne": True}
             }
-        )
+        ).sort("updated_at", -1).limit(1)
+        
+        conversations = await cursor.to_list(length=1)
+        conversation_doc = conversations[0] if conversations else None
         
         # Add user message
         user_message = Message(
@@ -77,14 +93,94 @@ async def bot_chat(
         is_greeting = any(greeting in message_lower for greeting in greetings) and len(message_lower.split()) <= 3
         
         if is_greeting:
+            # Fetch organization settings for dynamic naming
+            result = await db.execute(select(OrganizationSettings).limit(1))
+            settings = result.scalar_one_or_none()
+            company_name = settings.company_name if settings else "the District"
+            widget_name = settings.widget_name if settings else "AI Assistant"
+
             # Handle greetings without requiring document context
             if bot_request.agent_type == "internal":
-                ai_response_text = "I am the Leucadia Copilot (Internal). How can I help you with LWD technical data or district procedures today?"
+                ai_response_text = f"Hello! How can I help you today? 😊"
             else:
-                ai_response_text = "Hello! I am Leucadia's AI Assistant for the public. I can help with billing, permits, and general district inquiries. How can I help you?"
+                ai_response_text = f"Hello! I'm {widget_name}. How can I help you with our services today? 😊"
+            
+            # Calculate and log token usage locally
+            try:
+                prompt_tokens = count_tokens(bot_request.message)
+                completion_tokens = count_tokens(ai_response_text)
+                total_tokens = prompt_tokens + completion_tokens
+                
+                usage_collection = db_mongo["token_usage"]
+                log_entry = {
+                    "session_id": session_id,
+                    "agent_type": bot_request.agent_type,
+                    "timestamp": datetime.utcnow(),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                    "model": "tiktoken-calculated",
+                    "source": "bot_chat_local"
+                }
+                await usage_collection.insert_one(log_entry)
+                logger.info(f"Logged local token usage for greeting: {log_entry}")
+            except Exception as e:
+                logger.error(f"Failed to log local token usage: {e}")
         else:
             original_query = bot_request.message
             context_chunks = []
+            
+            # Internal Assistant: Check for Zoho CRM / Deals integration
+            if bot_request.agent_type == "internal":
+                try:
+                    message_lower = original_query.lower()
+                    if any(kw in message_lower for kw in ["deal", "deals", "zoho", "crm"]):
+                        logger.info("Deals-related query detected in internal chat. Fetching Zoho data...")
+                        from app.models.zoho_config import ZohoConfig
+                        from app.services.zoho_service import ZohoService
+                        
+                        zoho_result = await db.execute(select(ZohoConfig).where(ZohoConfig.is_active == True).limit(1))
+                        zoho_config = zoho_result.scalar_one_or_none()
+                        
+                        if zoho_config:
+                            from app.core.encryption import decrypt_value
+                            
+                            zoho_svc = ZohoService(
+                                client_id=zoho_config.client_id,
+                                client_secret=decrypt_value(zoho_config.client_secret),
+                                refresh_token=decrypt_value(zoho_config.refresh_token),
+                                dc=zoho_config.dc
+                            )
+                            
+                            # Determine if it's a specific search or general fetch
+                            deals = []
+                            if "search" in message_lower or len(original_query.split()) > 3:
+                                # Extract potential deal name (this is naive, improves with NLP)
+                                search_term = original_query.replace("deals", "").replace("deal", "").replace("zoho", "").replace("show", "").replace("me", "").strip()
+                                if search_term:
+                                    logger.info(f"Searching Zoho for: '{search_term}'")
+                                    deals = await zoho_svc.search_deals(search_term)
+                            
+                            if not deals:
+                                deals = await zoho_svc.get_recent_deals(limit=5)
+                            
+                            if deals:
+                                deals_text = "Live Zoho Deals Data:\n"
+                                for deal in deals:
+                                    deal_name = deal.get('Deal_Name', 'Unknown')
+                                    amount = deal.get('Amount', 'N/A')
+                                    stage = deal.get('Stage', 'N/A')
+                                    closing = deal.get('Closing_Date', 'N/A')
+                                    deals_text += f"• Deal: {deal_name} | Amount: ${amount} | Stage: {stage} | Closing: {closing}\n"
+                                
+                                context_chunks.append({
+                                    "text": f"LIVE ZOHO CRM DATA:\nThe following are current deals retrieved live from Zoho CRM for your reference:\n\n{deals_text}",
+                                    "source": "Zoho CRM (Live API)",
+                                    "similarity": 1.0
+                                })
+                                logger.info(f"Added {len(deals)} deals as live context")
+                except Exception as ze:
+                    logger.error(f"Error integrating Zoho data: {ze}")
             
             try:
                 # Try multiple query variations to improve matching
@@ -140,9 +236,9 @@ async def bot_chat(
                     similar_chunks = similar_chunks[:5]
                     context_chunks = []
                     for chunk, similarity in similar_chunks:
-                        # Double check chunk's agent_type just in case
-                        if chunk.agent_type != bot_request.agent_type:
-                            logger.error(f"SECURITY BREACH: Found {chunk.agent_type} chunk in {bot_request.agent_type} search!")
+                        # Security check: External assistant must NOT see internal data
+                        if bot_request.agent_type == "external" and chunk.agent_type == "internal":
+                            logger.error(f"SECURITY BREACH: Found internal chunk in external search!")
                             continue
                         
                         context_chunks.append({
@@ -161,29 +257,77 @@ async def bot_chat(
             # If no context found, return a professional internal assistant message
             if not context_chunks:
                 if bot_request.agent_type == "internal":
-                    ai_response_text = "I couldn't find specific data related to your query in the internal documents. Please verify the document names or IDs you are looking for."
+                    ai_response_text = "I couldn't find specific data related to your query in our internal records or public documentation. Please verify the information you are looking for."
                 else:
                     ai_response_text = "I couldn't find specific details regarding your question in our current records. For exact information, please contact our office directly at 760.753.0155."
+                
+                # Calculate and log token usage locally for fallback
+                try:
+                    prompt_tokens = count_tokens(original_query)
+                    completion_tokens = count_tokens(ai_response_text)
+                    total_tokens = prompt_tokens + completion_tokens
+                    
+                    usage_collection = db_mongo["token_usage"]
+                    log_entry = {
+                        "session_id": session_id,
+                        "agent_type": bot_request.agent_type,
+                        "timestamp": datetime.utcnow(),
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                        "model": "tiktoken-calculated",
+                        "source": "bot_chat_fallback"
+                    }
+                    await usage_collection.insert_one(log_entry)
+                    logger.info(f"Logged local token usage for fallback: {log_entry}")
+                except Exception as e:
+                    logger.error(f"Failed to log local token usage: {e}")
             else:
                 # Get appropriate configuration and system prompt from database
                 from app.models.ai_config import AIConfig
                 result = await db.execute(select(AIConfig).where(AIConfig.agent_type == bot_request.agent_type))
                 config = result.scalar_one_or_none()
                 
+                # Get system prompt
+                logger.info("Fetching system prompt...")
                 system_prompt = None
-                if config:
+                if config and getattr(config, 'system_prompt', None):
                     system_prompt = config.system_prompt
                 else:
                     # Fallback to hardcoded prompts if DB entry missing
-                    system_prompt = await llm_service.get_system_prompt(agent_type=bot_request.agent_type)
+                    system_prompt = await llm_service.get_system_prompt(db, agent_type=bot_request.agent_type)
+                logger.info(f"System prompt fetched: {len(system_prompt) if system_prompt else 0} chars")
 
                 # Generate response only from the provided context
-                ai_response_text = await llm_service.generate_response(
+                logger.info("Generating LLM response...")
+                llm_result = await llm_service.generate_response(
                     original_query,
                     context_chunks,
                     system_prompt=system_prompt,
                     config=config
                 )
+                logger.info("LLM response generated.")
+                
+                ai_response_text = llm_result["content"]
+                token_usage = llm_result["usage"]
+                
+                # Log token usage
+                try:
+                    usage_collection = db_mongo["token_usage"]
+                    log_entry = {
+                        "session_id": session_id,
+                        "agent_type": bot_request.agent_type,
+                        "timestamp": datetime.utcnow(),
+                        "prompt_tokens": token_usage["prompt_tokens"],
+                        "completion_tokens": token_usage["completion_tokens"],
+                        "total_tokens": token_usage["total_tokens"],
+                        "model": getattr(config, 'model', llm_service.model) if config else llm_service.model,
+                        "source": "bot_chat"
+                    }
+                    await usage_collection.insert_one(log_entry)
+                    logger.info(f"Logged token usage: {log_entry}")
+                except Exception as e:
+                    logger.error(f"Failed to log token usage: {e}")
         
         # Add assistant message
         assistant_message = Message(
@@ -233,7 +377,9 @@ async def bot_chat(
                         "updated_at": datetime.utcnow(),
                         "website_url": bot_request.website_url or conversation_doc.get("website_url"),
                         "user_ip": bot_request.user_ip or conversation_doc.get("user_ip"),
-                        "user_agent": bot_request.user_agent or conversation_doc.get("user_agent")
+                        "user_agent": bot_request.user_agent or conversation_doc.get("user_agent"),
+                        "user_name": bot_request.user_name or conversation_doc.get("user_name"),
+                        "user_email": bot_request.user_email or conversation_doc.get("user_email")
                     }
                 }
             )
@@ -268,6 +414,8 @@ async def bot_chat(
                 user_ip=bot_request.user_ip or (http_request.client.host if http_request.client else None),
                 user_agent=bot_request.user_agent or http_request.headers.get("user-agent"),
                 messages=[user_message, assistant_message],
+                user_name=bot_request.user_name,
+                user_email=bot_request.user_email,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
@@ -306,7 +454,7 @@ async def get_bot_suggestions(
         
         if agent_type == "internal":
             default_suggestions = [
-                "LWD holiday schedule",
+                "holiday schedule",
                 "Vendor payment status",
                 "Engineering SOPs",
                 "Current district projects"
@@ -337,11 +485,12 @@ async def get_bot_suggestions(
         
         # We can repurpose generate_response or add a simple completion method
         # For now, let's use a raw completion if possible or just use generate_response with specific query
-        suggestions_text = await llm_service.generate_response(
+        llm_result = await llm_service.generate_response(
             query="Generate 4 questions based on the context.",
             context_chunks=[{"text": snippet}],
                 system_prompt="You are an assistant that generates short menu-style suggested questions for a chat interface. Output only the questions, one per line."
         )
+        suggestions_text = llm_result["content"]
         
         suggestions = [s.strip().strip('-').strip('*').strip() for s in suggestions_text.split('\n') if s.strip()][:4]
         
@@ -362,7 +511,10 @@ async def get_bot_suggestions(
 
 
 @router.get("/script")
-async def get_embed_script(type: str = "external"):
+async def get_embed_script(
+    type: str = "external",
+    db: AsyncSession = Depends(get_db)
+):
     """
     Generate embeddable JavaScript code for the bot widget.
     Returns JavaScript code that can be embedded in any website.
@@ -370,16 +522,24 @@ async def get_embed_script(type: str = "external"):
         type: 'internal' or 'external' (default)
     """
     import os
+    
+    # Fetch branding settings from database
+    result = await db.execute(select(OrganizationSettings).limit(1))
+    settings = result.scalar_one_or_none()
+    
+    company_name = settings.company_name if settings else "the District"
+    widget_name = settings.widget_name if settings else "AI Assistant"
+
     api_url = os.getenv("API_URL", "http://localhost:8000")
     
     # Configure widget appearance based on type
     is_internal = type == "internal"
-    bot_name = "Leucadia Copilot" if is_internal else "Leucadia Assistant"
+    bot_name = f"{company_name} Copilot" if is_internal else widget_name
     header_color = "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)" if is_internal else "linear-gradient(135deg, #002c5c 0%, #001a36 100%)"
     
     script = f"""
 (function() {{
-    // Leucadia Bot Widget ({type})
+    // Bot Widget ({type})
     const API_URL = '{api_url}/api/bot';
     const AGENT_TYPE = '{type}';
     
@@ -402,7 +562,7 @@ async def get_embed_script(type: str = "external"):
                 <div id="cl-bot-container" style="display: none; width: 350px; height: 500px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); flex-direction: column; position: relative;">
                     <div style="background: {header_color}; color: white; padding: 16px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <img src="{api_url}/static/LWWD_Logo.jpg" alt="Leucadia" style="width: 24px; height: 24px; object-fit: contain; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px;" onerror="this.style.display='none';" />
+                            <img src="{api_url}/static/LWWD_Logo.jpg" alt="{company_name}" style="width: 24px; height: 24px; object-fit: contain; background: rgba(255,255,255,0.2); border-radius: 4px; padding: 2px;" onerror="this.style.display='none';" />
                             <div>
                                 <h3 style="margin: 0; font-size: 18px; font-weight: 600;">{bot_name}</h3>
                                 <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">How can I help you today?</p>
@@ -413,7 +573,7 @@ async def get_embed_script(type: str = "external"):
                     <div id="cl-messages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
                         <div style="background: white; padding: 12px; border-radius: 8px; max-width: 85%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                             <p style="margin: 0 0 8px 0; font-size: 14px; color: #374151; line-height: 1.5;">
-                                ✨ <strong>Welcome to Leucadia!</strong> ✨<br/>
+                                ✨ <strong>Welcome to {company_name}!</strong> ✨<br/>
                                 How can I assist you today? 🤖💬
                             </p>
                             <p style="margin: 8px 0 0 0; font-size: 12px; color: #6b7280; text-align: right;">08:13 PM</p>

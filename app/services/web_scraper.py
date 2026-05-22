@@ -13,16 +13,17 @@ class WebScraper:
     """Service for scraping content from websites"""
 
     @staticmethod
-    def scrape_url(url: str, max_pages: int = 50) -> Optional[str]:
+    def scrape_url(url: str, max_pages: int = 50, include_html: bool = False) -> Optional[str | dict]:
         """
         Scrape text content from a website URL and all its internal pages.
         
         Args:
             url: The base URL to scrape (will crawl entire site)
             max_pages: Maximum number of pages to scrape (default: 50)
+            include_html: If True, returns a dict with 'text' and 'root_html'
         
         Returns:
-            Extracted text content from all pages or None if scraping fails
+            Extracted text content or dict with text and root_html
         """
         try:
             # Validate and normalize URL
@@ -52,6 +53,7 @@ class WebScraper:
             visited_urls: Set[str] = set()
             urls_to_visit: List[str] = [url]
             all_content: List[str] = []
+            root_html: Optional[str] = None
 
             logger.info(f"Starting to scrape website: {base_url} (max {max_pages} pages)")
 
@@ -98,6 +100,10 @@ class WebScraper:
                     # Parse HTML
                     soup = BeautifulSoup(response.content, 'html.parser')
 
+                    # Capture root HTML if requested
+                    if include_html and not root_html:
+                        root_html = WebScraper._clean_for_design_extraction(response.content)
+
                     # Extract page content
                     page_content = WebScraper._extract_page_content(soup, normalized_url)
                     if page_content:
@@ -132,6 +138,12 @@ class WebScraper:
 
             full_text = "\n\n" + "="*80 + "\n\n".join(all_content)
             logger.info(f"Successfully scraped {len(visited_urls)} pages, {len(full_text)} characters from {base_url}")
+            
+            if include_html:
+                return {
+                    "text": full_text,
+                    "root_html": root_html
+                }
             return full_text
 
         except Exception as e:
@@ -242,4 +254,54 @@ class WebScraper:
         text = re.sub(r'[ \t]+', ' ', text)
         
         return text.strip()
+
+    @staticmethod
+    def _clean_for_design_extraction(html_content: bytes) -> str:
+        """Clean HTML to keep only structure and styles for design extraction"""
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Remove scripts, iframes, and svgs to save tokens
+            for element in soup(["script", "iframe", "svg", "noscript", "path"]):
+                element.decompose()
+                
+            # Keep head (for styles/meta) and body
+            # But strip actual image tags content, just keep the tag
+            for img in soup.find_all('img'):
+                img['src'] = 'IMAGE_URL'
+                
+            return soup.prettify()[:15000] # Limit to 15k chars for LLM safety
+        except:
+            return ""
+
+    @staticmethod
+    def convert_to_absolute_urls(html_content: str, base_url: str) -> str:
+        """Convert all relative URLs in HTML to absolute URLs"""
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Tags and attributes to update
+            url_attributes = {
+                'img': 'src',
+                'link': 'href',
+                'script': 'src',
+                'a': 'href',
+                'iframe': 'src'
+            }
+
+            for tag, attr in url_attributes.items():
+                for element in soup.find_all(tag):
+                    val = element.get(attr)
+                    if val:
+                        # Skip data URIs, anchors, and existing absolute URLs
+                        if val.startswith(('data:', '#', 'mailto:', 'tel:', 'javascript:')):
+                            continue
+                        
+                        absolute_url = urljoin(base_url, val)
+                        element[attr] = absolute_url
+            
+            return str(soup)
+        except Exception as e:
+            logger.warning(f"Error converting to absolute URLs: {e}")
+            return html_content
 

@@ -51,13 +51,15 @@ class VectorStore:
         Returns list of (chunk, similarity_score) tuples.
         """
         # Get all chunks with embeddings for the specific agent type
-        result = await db.execute(
-            select(DocumentChunk)
-            .where(
-                DocumentChunk.embedding.isnot(None),
-                DocumentChunk.agent_type == agent_type
-            )
-        )
+        # Internal agent can see both internal and external data
+        query = select(DocumentChunk).where(DocumentChunk.embedding.isnot(None))
+        
+        if agent_type in ["internal", "all"]:
+            query = query.where(DocumentChunk.agent_type.in_(["internal", "external"]))
+        else:
+            query = query.where(DocumentChunk.agent_type == agent_type)
+            
+        result = await db.execute(query)
         all_chunks = result.scalars().all()
 
         if not all_chunks:

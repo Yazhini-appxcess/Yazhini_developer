@@ -27,17 +27,17 @@ load_dotenv()
 
 # Get Redis connection credentials from environment variables
 redis_pass = os.getenv("REDIS_PASSWORD")  # Redis password for authentication
-# Redis port (currently unused in connection string)
-redis_port = os.getenv("REDIS_PORT")
+redis_host = os.getenv("REDIS_HOST", "localhost")
+redis_port = os.getenv("REDIS_PORT", "6379")
 
 # Create Celery application instance with Redis as message broker and result backend
 # Handle Redis password - if no password, connect without auth
 if redis_pass:
-    broker_url = f"redis://:{redis_pass}@localhost:6379/0"
-    backend_url = f"redis://:{redis_pass}@localhost:6379/1"
+    broker_url = f"redis://:{redis_pass}@{redis_host}:{redis_port}/0"
+    backend_url = f"redis://:{redis_pass}@{redis_host}:{redis_port}/1"
 else:
-    broker_url = "redis://localhost:6379/0"
-    backend_url = "redis://localhost:6379/1"
+    broker_url = f"redis://{redis_host}:{redis_port}/0"
+    backend_url = f"redis://{redis_host}:{redis_port}/1"
 
 celery_app = Celery(
     CEL_MAIN_NAME,  # Application name for Celery identification
@@ -49,8 +49,8 @@ celery_app = Celery(
 celery_app.conf.update(
     task_default_queue=CEL_DEFAULT_QUEUE,
     timezone="America/Los_Angeles",
-    # Windows compatibility: use solo pool instead of prefork
-    worker_pool="solo",  # Use solo pool for Windows compatibility
+    # Use solo pool on Windows, prefork elsewhere (configurable for Docker)
+    worker_pool=os.getenv("CELERY_WORKER_POOL", "solo" if os.name == "nt" else "prefork"),
 )
 
 # Automatically discover and register tasks from specified package paths

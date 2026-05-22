@@ -21,6 +21,7 @@ class DocumentResponse(BaseModel):
     mime_type: str
     agent_type: str
     processed: bool
+    text_content: Optional[str] = None
     uploaded_by: Optional[int] = None
     uploader: Optional[DocumentUploaderInfo] = None
     created_at: datetime

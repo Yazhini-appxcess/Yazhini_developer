@@ -3,7 +3,7 @@ from sqlalchemy import DateTime, String, Integer, Text, Boolean, ARRAY, Float, F
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List
 
-from . import Base
+from app.core.database import Base
 
 
 class Document(Base):

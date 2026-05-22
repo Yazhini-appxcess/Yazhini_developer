@@ -88,3 +88,4 @@ pymongo==4.15.5
 # Authentication
 bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
+tiktoken==0.8.0

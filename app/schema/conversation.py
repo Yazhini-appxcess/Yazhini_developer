@@ -35,6 +35,8 @@ class BotChatRequest(BaseModel):
     user_ip: Optional[str] = None
     user_agent: Optional[str] = None
     agent_type: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
 
 
 class BotChatResponse(BaseModel):

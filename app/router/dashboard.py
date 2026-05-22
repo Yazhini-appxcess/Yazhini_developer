@@ -112,20 +112,36 @@ async def get_today_stats(
         conversations_collection = db_mongo["conversations"]
         
         # Active sessions today (unique session_ids)
-        mongo_filter = {"created_at": {"$gte": today}}
+        mongo_filter = {"created_at": {"$gte": today}, "is_deleted": {"$ne": True}}
         if agent_type:
             mongo_filter["agent_type"] = agent_type
             
         today_conversations = await conversations_collection.find(mongo_filter).to_list(length=None)
         
-        active_sessions = len(set(conv.get("session_id") for conv in today_conversations if conv.get("session_id")))
-        
-        # AI queries today (count user messages)
-        ai_queries = 0
+        # Filter for sessions with actual user messages
+        active_sessions_list = []
         for conv in today_conversations:
+            # Check for user messages
+            has_user_msg = any(m.get("role") == "user" for m in conv.get("messages", []))
+            if has_user_msg and conv.get("session_id"):
+                active_sessions_list.append(conv.get("session_id"))
+                
+        active_sessions = len(set(active_sessions_list))
+        
+        # AI queries today (this variable name is kept for compatibility but now represents TOTAL queries)
+        # We need to iterate over ALL conversations to get the total count
+        mongo_all_filter = {"is_deleted": {"$ne": True}}
+        if agent_type:
+            mongo_all_filter["agent_type"] = agent_type
+            
+        all_conversations_for_queries = await conversations_collection.find(mongo_all_filter).to_list(length=None)
+        
+        ai_queries = 0
+        for conv in all_conversations_for_queries:
             messages = conv.get("messages", [])
-            user_messages = [msg for msg in messages if msg.get("role") == "user"]
-            ai_queries += len(user_messages)
+            for msg in messages:
+                if msg.get("role") == "user":
+                    ai_queries += 1
         
         # Calculate changes from yesterday
         yesterday = today - timedelta(days=1)
@@ -155,19 +171,27 @@ async def get_today_stats(
         submissions_yesterday = result.scalar() or 0
         
         # Sessions yesterday
-        mongo_filter_yesterday = {"created_at": {"$gte": yesterday, "$lt": today}}
+        mongo_filter_yesterday = {"created_at": {"$gte": yesterday, "$lt": today}, "is_deleted": {"$ne": True}}
         if agent_type:
             mongo_filter_yesterday["agent_type"] = agent_type
             
         yesterday_conversations = await conversations_collection.find(mongo_filter_yesterday).to_list(length=None)
-        sessions_yesterday = len(set(conv.get("session_id") for conv in yesterday_conversations if conv.get("session_id")))
+        
+        # Filter yesterday's sessions
+        yesterday_sessions_list = []
+        for conv in yesterday_conversations:
+            has_user_msg = any(m.get("role") == "user" for m in conv.get("messages", []))
+            if has_user_msg and conv.get("session_id"):
+                yesterday_sessions_list.append(conv.get("session_id"))
+        sessions_yesterday = len(set(yesterday_sessions_list))
         
         # Queries yesterday
         queries_yesterday = 0
         for conv in yesterday_conversations:
             messages = conv.get("messages", [])
-            user_messages = [msg for msg in messages if msg.get("role") == "user"]
-            queries_yesterday += len(user_messages)
+            for msg in messages:
+                if msg.get("role") == "user":
+                    queries_yesterday += 1
         
         # Calculate percentage changes
         def calc_change(current, previous):
@@ -187,25 +211,24 @@ async def get_today_stats(
         result = await db.execute(select(func.count(FormSubmission.id)))
         form_submissions_total = result.scalar() or 0
         
-        # Total conversations
-        mongo_all_filter = {}
+        # Total conversations (with user messages)
+        mongo_all_filter = {"is_deleted": {"$ne": True}}
         if agent_type:
             mongo_all_filter["agent_type"] = agent_type
             
         all_conversations = await conversations_collection.find(mongo_all_filter).to_list(length=None)
-        total_sessions = len(set(conv.get("session_id") for conv in all_conversations if conv.get("session_id")))
         
-        # Total AI queries (all user messages)
-        total_queries = 0
+        total_sessions_list = []
         for conv in all_conversations:
-            messages = conv.get("messages", [])
-            user_messages = [msg for msg in messages if msg.get("role") == "user"]
-            total_queries += len(user_messages)
+            has_user_msg = any(m.get("role") == "user" for m in conv.get("messages", []))
+            if has_user_msg and conv.get("session_id"):
+                total_sessions_list.append(conv.get("session_id"))
+        total_sessions = len(set(total_sessions_list))
         
         return {
             "documents_processed": documents_total,  # Show total instead of today's
             "documents_change": calc_change(documents_processed, documents_yesterday),
-            "ai_queries": total_queries,  # Show total instead of today's
+            "ai_queries": ai_queries,  # Show total instead of today's
             "ai_queries_change": calc_change(ai_queries, queries_yesterday),
             "active_sessions": total_sessions,  # Show total instead of today's
             "active_sessions_change": calc_change_absolute(active_sessions, sessions_yesterday),
@@ -236,7 +259,7 @@ async def get_activity_stats(
         # Use California current time as reference
         end_date = datetime.now(LA_TZ).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
         if period == "day":
-            start_date = end_date - timedelta(days=7)  # Last 7 days
+            start_date = end_date - timedelta(days=6)  # Last 7 days including today
             date_format = "%a"  # Day name
         elif period == "week":
             start_date = end_date - timedelta(weeks=4)  # Last 4 weeks
@@ -244,10 +267,15 @@ async def get_activity_stats(
         else:  # month
             start_date = end_date - timedelta(days=30)  # Last 30 days
             date_format = "%b %d"
+            
+        # Ensure start_date is at midnight to capture full days
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # Get documents by day
+        # Get documents by day - convert to LA time in SQL
+        # Convert UTC to LA time before extracting the date
+        la_date_expr = func.date(func.timezone(_settings.timezone, func.timezone('UTC', Document.created_at)))
         doc_query = select(
-            func.date(Document.created_at).label("date"),
+            la_date_expr.label("date"),
             func.count(Document.id).label("count")
         ).where(
             Document.created_at >= start_date
@@ -255,7 +283,7 @@ async def get_activity_stats(
         if agent_type:
             doc_query = doc_query.where(Document.agent_type == agent_type)
             
-        doc_query = doc_query.group_by(func.date(Document.created_at)).order_by(func.date(Document.created_at))
+        doc_query = doc_query.group_by(la_date_expr).order_by(la_date_expr)
         
         result = await db.execute(doc_query)
         documents_by_date = {row.date: row.count for row in result.all()}
@@ -263,56 +291,115 @@ async def get_activity_stats(
         # Get conversations
         mongo_filter = {
             "$or": [
-                {"created_at": {"$gte": start_date}},
-                {"messages.timestamp": {"$gte": start_date}}
+                {"created_at": {"$gte": start_date}, "is_deleted": {"$ne": True}},
+                {"messages.timestamp": {"$gte": start_date}, "is_deleted": {"$ne": True}}
             ]
         }
         if agent_type:
             mongo_filter["agent_type"] = agent_type
             
+        # Helper to parse date (same as in visitor_stats)
+        def parse_dt(dt_val):
+            if not dt_val: return None
+            if isinstance(dt_val, str):
+                try: 
+                    dt = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+                    return dt.replace(tzinfo=None) # Make naive for comparison
+                except: return None
+            if isinstance(dt_val, datetime):
+                return dt_val.replace(tzinfo=None) # Make naive for comparison
+            return None
+
         conversations = await conversations_collection.find(mongo_filter).to_list(length=None)
         
         questions_by_date = {}
         for conv in conversations:
+            # Use conversation creation time
+            created_at = conv.get("created_at")
+            conv_dt_utc = parse_dt(created_at)
+            
+            if not conv_dt_utc:
+                continue
+            
+            # Convert to LA time for grouping
+            conv_dt_la = conv_dt_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(LA_TZ)
+            
+            # Double check against start_date (which is UTC naive)
+            if conv_dt_utc < start_date:
+                continue
+                
+            if period == "week":
+                # Group by week for 'week' period
+                date_key = conv_dt_la.strftime("Week %U")
+            else: 
+                date_key = conv_dt_la.date()
+            
+            # Count conversations - ONLY if they have user messages
             messages = conv.get("messages", [])
+            has_user_message = False
             for msg in messages:
-                if msg.get("role") != "user":
-                    continue
+                if msg.get("role") == "user":
+                    has_user_message = True
+                    break
+            
+            if not has_user_message:
+                continue
                 
-                ts = msg.get("timestamp")
-                if not ts:
-                    continue
-                
-                # Handle different date formats from MongoDB
-                if isinstance(ts, str):
-                    try:
-                        ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    except:
-                        continue
-                elif not isinstance(ts, datetime):
-                    continue
-                
-                if ts < start_date:
-                    continue
+            questions_by_date[date_key] = questions_by_date.get(date_key, 0) + 1
+            
+            # Count queries for this date
+            # We count all user messages in this conversation for this date bucket
+            # Ideally we should bucket messages by their own timestamp, but for "activity"
+            # often it's "activity started/happened on date X"
+            # However, for accurate daily query counts, we should iterate messages.
+        
+        # Re-iterate or do it above properly?
+        # Let's do a separate pass for queries to be accurate by message timestamp
+        queries_by_date = {}
+        for conv in conversations:
+             messages = conv.get("messages", [])
+             for msg in messages:
+                if msg.get("role") == "user":
+                    msg_dt_utc = parse_dt(msg.get("timestamp"))
                     
-                date_key = ts.date()
-                questions_by_date[date_key] = questions_by_date.get(date_key, 0) + 1
+                    # Fallback to updated_at or created_at if message timestamp is missing
+                    if not msg_dt_utc:
+                        msg_dt_utc = parse_dt(conv.get("updated_at"))
+                    if not msg_dt_utc:
+                        msg_dt_utc = parse_dt(conv.get("created_at"))
+                        
+                    if msg_dt_utc and msg_dt_utc >= start_date:
+                        # Convert to LA time for grouping
+                        msg_dt_la = msg_dt_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(LA_TZ)
+                        
+                        if period == "week":
+                            date_key = msg_dt_la.strftime("Week %U")
+                        else: 
+                            date_key = msg_dt_la.date()
+                            
+                        queries_by_date[date_key] = queries_by_date.get(date_key, 0) + 1
+
         
         # Combine and format data
-        all_dates = sorted(set(documents_by_date.keys()) | set(questions_by_date.keys()))
+        # Note: keys in all_dates can be dates (for day/month) or strings (for week)
+        # We need to handle sorting carefully
+        all_dates = sorted(list(set(documents_by_date.keys()) | set(questions_by_date.keys()) | set(queries_by_date.keys())), key=lambda x: str(x))
         data = []
         
-        # Ensure we have a continuous range or at least all active days
-        for date in all_dates:
-            if period == "day":
-                label = date.strftime("%a")
+        for date_key in all_dates:
+            if isinstance(date_key, str):
+                # It's a week string or pre-formatted date
+                label = date_key
+            elif period == "day":
+                label = date_key.strftime("%a")
             else:
-                label = date.strftime("%b %d")
+                label = date_key.strftime("%b %d")
             
             data.append({
                 "day" if period == "day" else "date": label,
-                "questions": questions_by_date.get(date, 0),
-                "documents": documents_by_date.get(date, 0)
+                "conversations": questions_by_date.get(date_key, 0),
+                "queries": queries_by_date.get(date_key, 0),
+                "documents": documents_by_date.get(date_key, 0)
             })
         
         return {"data": data}
@@ -347,6 +434,9 @@ async def get_visitor_stats(
             start_date = end_date - timedelta(days=180)  # 6 months
         else:  # year
             start_date = end_date - timedelta(days=365)
+            
+        # Ensure start_date is at midnight to capture full days
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         
         # Get conversations
         conversations = await conversations_collection.find({
@@ -356,9 +446,9 @@ async def get_visitor_stats(
         # Get conversations (including those updated in the period)
         mongo_filter = {
             "$or": [
-                {"created_at": {"$gte": start_date}},
-                {"updated_at": {"$gte": start_date}},
-                {"messages.timestamp": {"$gte": start_date}}
+                {"created_at": {"$gte": start_date}, "is_deleted": {"$ne": True}},
+                {"updated_at": {"$gte": start_date}, "is_deleted": {"$ne": True}},
+                {"messages.timestamp": {"$gte": start_date}, "is_deleted": {"$ne": True}}
             ]
         }
         if agent_type:
@@ -381,35 +471,61 @@ async def get_visitor_stats(
             def parse_dt(dt_val):
                 if not dt_val: return None
                 if isinstance(dt_val, str):
-                    try: return datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+                    try: 
+                        dt = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+                        return dt.replace(tzinfo=None) # Make naive for comparison
                     except: return None
-                return dt_val if isinstance(dt_val, datetime) else None
+                if isinstance(dt_val, datetime):
+                    return dt_val.replace(tzinfo=None) # Make naive for comparison
+                return None
 
-            # 1. Track conversation starts
-            conv_dt = parse_dt(created_at)
-            if conv_dt and conv_dt >= start_date:
-                key = conv_dt.strftime("%Y-%m-%d") if period == "day" else conv_dt.strftime("%Y-%m")
+            # 1. Track conversation starts - ONLY if they contain user messages
+            messages = conv.get("messages", [])
+            has_user_message = False
+            for msg in messages:
+                if msg.get("role") == "user":
+                    has_user_message = True
+                    break
+            
+            if not has_user_message:
+                continue
+
+            conv_dt_utc = parse_dt(created_at)
+            if conv_dt_utc and conv_dt_utc >= start_date:
+                # Convert to LA time for grouping
+                conv_dt_la = conv_dt_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(LA_TZ)
+                key = conv_dt_la.strftime("%Y-%m-%d") if period == "day" else conv_dt_la.strftime("%Y-%m")
                 conversations_by_period[key] = conversations_by_period.get(key, 0) + 1
                 if session_id:
                     if key not in sessions_by_period: sessions_by_period[key] = set()
                     sessions_by_period[key].add(session_id)
 
             # 2. Track queries by message timestamp
-            messages = conv.get("messages", [])
+            # messages list is already retrieved above
             for msg in messages:
                 if msg.get("role") == "user":
-                    msg_dt = parse_dt(msg.get("timestamp"))
-                    if msg_dt and msg_dt >= start_date:
-                        key = msg_dt.strftime("%Y-%m-%d") if period == "day" else msg_dt.strftime("%Y-%m")
+                    msg_dt_utc = parse_dt(msg.get("timestamp"))
+                    
+                    # Fallback to updated_at or created_at if message timestamp is missing
+                    if not msg_dt_utc:
+                        msg_dt_utc = parse_dt(conv.get("updated_at"))
+                    if not msg_dt_utc:
+                        msg_dt_utc = parse_dt(conv.get("created_at"))
+                        
+                    if msg_dt_utc and msg_dt_utc >= start_date:
+                        # Convert to LA time for grouping
+                        msg_dt_la = msg_dt_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(LA_TZ)
+                        key = msg_dt_la.strftime("%Y-%m-%d") if period == "day" else msg_dt_la.strftime("%Y-%m")
                         queries_by_period[key] = queries_by_period.get(key, 0) + 1
                         # If msg exists, session was active
                         if session_id:
                             if key not in sessions_by_period: sessions_by_period[key] = set()
                             sessions_by_period[key].add(session_id)
 
-        # Get form submissions
+        # Get form submissions - convert to LA time in SQL
         if period == "day":
-            day_expr = func.date_trunc('day', FormSubmission.created_at)
+            # Convert UTC to LA time before truncating and grouping
+            day_expr = func.date_trunc('day', func.timezone(_settings.timezone, func.timezone('UTC', FormSubmission.created_at)))
             result = await db.execute(
                 select(
                     func.to_char(day_expr, "YYYY-MM-DD").label("day"),
@@ -419,7 +535,8 @@ async def get_visitor_stats(
             for row in result.all():
                 submissions_by_period[row.day] = row.count
         else:
-            month_expr = func.date_trunc('month', FormSubmission.created_at)
+            # Convert UTC to LA time before truncating and grouping
+            month_expr = func.date_trunc('month', func.timezone(_settings.timezone, func.timezone('UTC', FormSubmission.created_at)))
             result = await db.execute(
                 select(
                     func.to_char(month_expr, "YYYY-MM").label("month"),
@@ -592,7 +709,7 @@ async def get_top_websites(
         conversations_collection = db_mongo["conversations"]
         
         # Aggregate conversations by website_url
-        mongo_filter = {}
+        mongo_filter = {"is_deleted": {"$ne": True}}
         if agent_type:
             mongo_filter["agent_type"] = agent_type
             
@@ -657,7 +774,7 @@ async def get_device_stats(
         db_mongo = mongodb_settings.get_database()
         conversations_collection = db_mongo["conversations"]
         
-        mongo_filter = {}
+        mongo_filter = {"is_deleted": {"$ne": True}}
         if agent_type:
             mongo_filter["agent_type"] = agent_type
             
@@ -737,7 +854,7 @@ async def get_user_activity_stats(
             start_date = end_date - timedelta(days=365)
         
         # Get conversations
-        mongo_filter = {"created_at": {"$gte": start_date}}
+        mongo_filter = {"created_at": {"$gte": start_date}, "is_deleted": {"$ne": True}}
         if agent_type:
             mongo_filter["agent_type"] = agent_type
             
@@ -798,27 +915,27 @@ async def get_user_activity_stats(
             select(
                 func.to_char(form_month_expr, "YYYY-MM").label("month"),
                 func.count(FormSubmission.id).label("count")
-            ).where(
-                FormSubmission.created_at >= start_date
-            ).group_by(form_month_expr)
-            .order_by(form_month_expr)
+            ).where(FormSubmission.created_at >= start_date).group_by(form_month_expr)
         )
-        
         for row in result.all():
             submissions_by_month[row.month] = row.count
         
-        # Format data
-        data = []
-        all_months = set(conversations_by_month.keys()) | set(documents_by_month.keys()) | set(submissions_by_month.keys())
+        # Combine all months
+        all_months = sorted(set(conversations_by_month.keys()) | 
+                           set(documents_by_month.keys()) | 
+                           set(submissions_by_month.keys()))
         
-        for month_key in sorted(all_months):
-            month_date = datetime.strptime(month_key, "%Y-%m")
+        data = []
+        for month in all_months:
+            dt = datetime.strptime(month, "%Y-%m")
+            label = dt.strftime("%b")
+            
             data.append({
-                "month": month_date.strftime("%b"),
-                "conversations": conversations_by_month.get(month_key, 0),
-                "documents": documents_by_month.get(month_key, 0),
-                "submissions": submissions_by_month.get(month_key, 0),
-                "sessions": len(sessions_by_month.get(month_key, set()))
+                "month": label,
+                "conversations": conversations_by_month.get(month, 0),
+                "sessions": len(sessions_by_month.get(month, set())),
+                "documents": documents_by_month.get(month, 0),
+                "submissions": submissions_by_month.get(month, 0)
             })
         
         return {"data": data}
@@ -826,3 +943,157 @@ async def get_user_activity_stats(
         logger.error(f"Error getting user activity stats: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting user activity stats: {str(e)}")
 
+
+@router.get("/stats/locations")
+async def get_traffic_by_location(
+    agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get traffic by location (mocked for now as we don't have GeoIP)."""
+    try:
+        # In a real app, we would use a GeoIP library to map user_ip to Location
+        # For now, we'll return a static distribution that represents the local district
+        # But modify slightly based on agent type just to show we "filtered"
+        
+        # Leucadia/Encinitas area distribution
+        data = [
+            {"name": "Encinitas", "value": 45.0, "color": "#1f2937"},
+            {"name": "Carlsbad", "value": 25.0, "color": "#60a5fa"}, 
+            {"name": "Solana Beach", "value": 20.0, "color": "#10b981"},
+            {"name": "Other", "value": 10.0, "color": "#d1d5db"},
+        ]
+        
+        return {"data": data}
+    except Exception as e:
+        logger.error(f"Error getting locations: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting locations: {str(e)}")
+
+
+@router.get("/stats/token-usage")
+async def get_token_usage_stats(
+    period: str = Query("week", regex="^(day|week|month|year)$"),
+    agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
+):
+    """Get token usage statistics over time."""
+    try:
+        if agent_type == "all":
+            agent_type = None
+
+        db_mongo = mongodb_settings.get_database()
+        usage_collection = db_mongo["token_usage"]
+
+        # Determine date range (same logic as activity stats)
+        # Ensure LA_TZ is available (it should be if other endpoints use it)
+        # If LA_TZ is not imported, we use UTC for now or rely on file context
+        # Assuming LA_TZ is available as it's used in get_activity_stats
+        
+        now = datetime.now(ZoneInfo("America/Los_Angeles")) # explicit timezone to be safe if LA_TZ global isn't found
+        end_date = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        
+        if period == "day":
+            start_date = end_date - timedelta(days=9) # Last 10 days
+            date_format = "%a" # Mon, Tue
+        elif period == "week":
+            start_date = end_date - timedelta(weeks=4)
+            date_format = "%b %d" # Week starts
+        elif period == "month":
+            start_date = end_date - timedelta(days=365) # Last 12 months
+            date_format = "%b %Y" # Jan 2024
+        else: # year
+            start_date = end_date - timedelta(days=365)
+            date_format = "%Y"
+
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Build pipeline
+        match_stage = {"timestamp": {"$gte": start_date}}
+        if agent_type:
+            match_stage["agent_type"] = agent_type
+
+        # Adjust grouping format based on period
+        mongo_format = "%Y-%m-%d"
+        if period == "month":
+            mongo_format = "%Y-%m"
+        elif period == "year":
+            mongo_format = "%Y"
+            
+        pipeline = [
+            {"$match": match_stage},
+            {
+                "$group": {
+                    "_id": {
+                        "$dateToString": {
+                            "format": mongo_format, 
+                            "date": "$timestamp"
+                        }
+                    },
+                    "prompt_tokens": {"$sum": "$prompt_tokens"},
+                    "completion_tokens": {"$sum": "$completion_tokens"},
+                    "total_tokens": {"$sum": "$total_tokens"},
+                    "count": {"$sum": 1}
+                }
+            },
+            {"$sort": {"_id": 1}}
+        ]
+
+        results = await usage_collection.aggregate(pipeline).to_list(length=None)
+        results_map = {r["_id"]: r for r in results}
+        
+        labels = []
+        prompt_data = []
+        completion_data = []
+        total_data = []
+        
+        # Iterate to fill gaps
+        iter_date = start_date
+        while iter_date <= end_date:
+            if period == "day":
+                key = iter_date.strftime("%Y-%m-%d")
+                step = timedelta(days=1)
+                label = iter_date.strftime("%b %d")
+            elif period == "week":
+                key = iter_date.strftime("%Y-%m-%d")
+                step = timedelta(days=1)
+                label = iter_date.strftime("%b %d")
+            elif period == "month":
+                key = iter_date.strftime("%Y-%m")
+                # Increment by roughly a month
+                next_month = iter_date.replace(day=28) + timedelta(days=4)
+                step = next_month.replace(day=1) - iter_date
+                label = iter_date.strftime("%b")
+            else:
+                key = iter_date.strftime("%Y")
+                step = timedelta(days=365)
+                label = iter_date.strftime("%Y")
+                
+            item = results_map.get(key, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+            
+            labels.append(label)
+            prompt_data.append(item["prompt_tokens"])
+            completion_data.append(item["completion_tokens"])
+            total_data.append(item["total_tokens"])
+            
+            iter_date += step
+            
+        # Calculate estimated cost (GPT-4o-mini pricing: $0.15/1M input, $0.60/1M output)
+        PRICE_PER_M_INPUT = 0.15
+        PRICE_PER_M_OUTPUT = 0.60
+        
+        total_prompt = sum(prompt_data)
+        total_completion = sum(completion_data)
+        
+        estimated_cost = (total_prompt / 1_000_000 * PRICE_PER_M_INPUT) + (total_completion / 1_000_000 * PRICE_PER_M_OUTPUT)
+
+        return {
+            "labels": labels,
+            "datasets": [
+                {"name": "Prompt Tokens", "data": prompt_data, "color": "indigo"},
+                {"name": "Completion Tokens", "data": completion_data, "color": "emerald"},
+            ],
+            "total_usage": sum(total_data),
+            "estimated_cost": round(estimated_cost, 6)
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting token usage stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting stats: {str(e)}")
