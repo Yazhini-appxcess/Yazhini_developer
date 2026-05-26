@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { CheckCircle2, AlertCircle, UserPlus, Palette, Code, FileText, Trash2 } from "lucide-react";
 
 const notifications = [
@@ -26,7 +27,7 @@ const contacts = [
   { name: "Melody Macy", avatar: "MM" },
 ];
 
-function NotificationItem({ text, time, icon: Icon }: { text: string; time: string; icon: any }) {
+function NotificationItem({ text, time, icon: Icon }: { text: string; time: string; icon: React.ComponentType<{ className?: string }> }) {
   return (
     <div className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
       <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -40,7 +41,7 @@ function NotificationItem({ text, time, icon: Icon }: { text: string; time: stri
   );
 }
 
-function ActivityItem({ text, time, icon: Icon }: { text: string; time: string; icon: any }) {
+function ActivityItem({ text, time, icon: Icon }: { text: string; time: string; icon: React.ComponentType<{ className?: string }> }) {
   return (
     <div className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
       <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">

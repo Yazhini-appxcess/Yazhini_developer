@@ -100,7 +100,7 @@ export default function DocumentImportanceChart() {
                 border: "1px solid #e5e7eb",
                 borderRadius: "8px"
               }}
-              formatter={(value: any, name: any, props: any) => {
+              formatter={(value, name) => {
                 if (name === "score") {
                   return [`${value}%`, "Importance Score"];
                 }

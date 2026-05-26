@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Loader2, Home, MessageSquare, Clock, Zap, Bot, ArrowLeft, XCircle, ChevronLeft, User } from "lucide-react";
+import { Send, Loader2, Home, MessageSquare, Clock, Zap, Bot, ArrowLeft, XCircle, ChevronLeft, User, Mic, MicOff } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api";
+import { useTheme } from "@/context/ThemeContext";
 
 interface Message {
   role: "user" | "assistant";
@@ -35,7 +36,7 @@ function formatMessage(text: string): string {
 
   // Handle newlines
   const lines = html.split('\n');
-  let formattedLines: string[] = [];
+  const formattedLines: string[] = [];
   let inList = false;
   let listType = '';
 
@@ -93,6 +94,7 @@ export default function AIChatInterface({
   initialView = "home",
   agentType = "internal"
 }: AIChatInterfaceProps) {
+  const { settings } = useTheme();
   const [view, setView] = useState<"home" | "conversations" | "chat">(initialView);
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -102,6 +104,9 @@ export default function AIChatInterface({
   const [sessionId, setSessionId] = useState<string>("");
   const [conversationStarted, setConversationStarted] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const [suggestions, setSuggestions] = useState<string[]>([
     "Summarize document",
     "Check sync status",
@@ -111,6 +116,14 @@ export default function AIChatInterface({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationViewRef = useRef<HTMLDivElement>(null);
+
+  // Chat widget branding from Super Admin Widget Config. Read on every render
+  // so updates propagate as soon as ThemeContext setState lands.
+  const widgetName = settings?.widget_name || "Assistant";
+  const widgetLogoUrl = settings?.widget_logo_url || null;
+  const widgetColor = settings?.widget_primary_color && settings.widget_primary_color !== "#01284e" && settings.widget_primary_color !== "#06080c"
+    ? settings.widget_primary_color
+    : "rgb(var(--primary-rgb, 79 70 229))";
 
   useEffect(() => {
     // If starting in chat view, ensure we check for ongoing first or just start fresh if preferred
@@ -246,6 +259,24 @@ export default function AIChatInterface({
     setConversationStarted(true);
 
     try {
+      // Get admin user info if available (for internal assistant identification)
+      let adminName = null;
+      let adminEmail = null;
+      if (agentType === 'internal') {
+        const userStr = localStorage.getItem("admin_user");
+        if (userStr) {
+          try {
+            const user = JSON.parse(userStr);
+            adminName = user.first_name && user.last_name
+              ? `${user.first_name} ${user.last_name}`
+              : user.username || user.first_name || "Admin";
+            adminEmail = user.email;
+          } catch (e) {
+            console.error("Failed to parse admin user", e);
+          }
+        }
+      }
+
       const res = await fetch(API_ENDPOINTS.bot.chat, {
         method: "POST",
         headers: {
@@ -256,7 +287,9 @@ export default function AIChatInterface({
           session_id: sessionId,
           website_url: typeof window !== 'undefined' ? window.location.href : '',
           user_agent: navigator.userAgent,
-          agent_type: agentType
+          agent_type: agentType,
+          user_name: adminName,
+          user_email: adminEmail
         }),
       });
 
@@ -278,6 +311,54 @@ export default function AIChatInterface({
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
+        }
+        if (finalTranscript) {
+          setQuery(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + finalTranscript);
+        }
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+
+      recognitionRef.current = recognition;
+    }
+
+    recognitionRef.current.start();
   };
 
   const endChat = async () => {
@@ -314,12 +395,12 @@ export default function AIChatInterface({
           setConversationStarted(!conv.ended);
           setView("chat");
         }}
-        className="bg-white p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 hover:border-[#01284e] transition-all"
+        className="bg-white p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 hover:border-primary transition-all"
       >
         <div className="flex justify-between items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-medium text-[#212529] mb-1">{conv.ended ? 'Ended' : 'Ongoing'}</p>
-            <p className="text-[11px] text-[#6c757d] mb-1">{new Date(conv.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}</p>
+            <p className="text-[11px] text-[#6c757d] mb-1">{new Date(conv.created_at).toLocaleDateString("en-US")}</p>
             <p className="text-xs text-[#495057] truncate">{preview}</p>
           </div>
           <span className={`w-2 h-2 rounded-full mt-1 ${conv.ended ? 'bg-gray-400' : 'bg-[#81c341]'}`}></span>
@@ -332,7 +413,10 @@ export default function AIChatInterface({
 
   // Header is common
   const renderHeader = () => (
-    <div className="bg-gradient-to-r from-[#01284e] to-[#81c341] text-white px-4 py-3 rounded-t-2xl flex justify-between items-center flex-shrink-0">
+    <div
+      className="text-white px-4 py-3 rounded-t-2xl flex justify-between items-center flex-shrink-0"
+      style={{ background: widgetColor }}
+    >
       <div className="flex items-center gap-2.5">
         {view === "chat" && (
           <button onClick={() => setView("home")} className="p-1 hover:opacity-80 transition-opacity">
@@ -340,15 +424,19 @@ export default function AIChatInterface({
           </button>
         )}
         <div className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center overflow-hidden">
-          <img
-            src="/LWWD_Logo.jpg"
-            alt="LEUCADIA"
-            className="w-7 h-7 object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
+          {widgetLogoUrl ? (
+            <img
+              src={widgetLogoUrl}
+              alt={widgetName}
+              className="w-7 h-7 object-contain"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <Bot className="w-5 h-5 text-white" />
+          )}
         </div>
         <div>
-          <h3 className="text-sm font-semibold leading-tight">LEUCADIA Assistant</h3>
+          <h3 className="text-sm font-semibold leading-tight">{widgetName}</h3>
           <p className="text-[11px] opacity-95 flex items-center gap-1.5 mt-0.5">
             <span className="w-1.5 h-1.5 bg-[#81c341] rounded-full inline-block shadow-[0_0_3px_rgba(129,195,65,0.6)]"></span>
             We are online!
@@ -393,7 +481,8 @@ export default function AIChatInterface({
           </p>
           <button
             onClick={startNewConversation}
-            className="bg-gradient-to-r from-[#01284e] to-[#81c341] text-white border-none py-3 px-6 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-105 transition-all w-full max-w-[280px]"
+            className="text-white border-none py-3 px-6 rounded-xl text-sm font-semibold hover:shadow-lg hover:scale-105 transition-all w-full max-w-[280px]"
+            style={{ background: widgetColor }}
           >
             Start a New Conversation
           </button>
@@ -407,8 +496,17 @@ export default function AIChatInterface({
         {view === "home" && !showThankYou && (
           <div className="flex-1 flex flex-col p-4 items-center overflow-y-auto">
             <div className="text-center py-6 w-full">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-br from-[#01284e] to-[#81c341] flex items-center justify-center text-2xl shadow-md">🤖</div>
-              <h3 className="text-base font-bold text-[#212529] mb-1">Welcome to Leucadia Assistant</h3>
+              <div
+                className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-2xl shadow-md overflow-hidden"
+                style={{ background: widgetColor }}
+              >
+                {widgetLogoUrl ? (
+                  <img src={widgetLogoUrl} alt={widgetName} className="w-full h-full object-contain" />
+                ) : (
+                  <span>🤖</span>
+                )}
+              </div>
+              <h3 className="text-base font-bold text-[#212529] mb-1">Welcome to {widgetName}</h3>
               <p className="text-xs text-[#6c757d]">Your AI-powered assistant is here to help</p>
             </div>
 
@@ -419,7 +517,10 @@ export default function AIChatInterface({
                 { icon: Bot, title: "Smart AI Assistant", sub: "Intelligent and helpful responses" }
               ].map((Item, i) => (
                 <div key={i} className="bg-white p-3 rounded-xl shadow-sm border border-gray-50 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#01284e] to-[#81c341] flex items-center justify-center flex-shrink-0">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: widgetColor }}
+                  >
                     <Item.icon className="w-4 h-4 text-white" />
                   </div>
                   <div className="text-left">
@@ -432,7 +533,8 @@ export default function AIChatInterface({
 
             <button
               onClick={handleChatWithUs}
-              className="mt-auto w-full py-3 bg-gradient-to-r from-[#01284e] to-[#81c341] text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              className="mt-auto w-full py-3 text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              style={{ background: widgetColor }}
             >
               <MessageSquare className="w-4 h-4" />
               Chat with us
@@ -466,28 +568,40 @@ export default function AIChatInterface({
                   <div key={i} className={`flex items-start gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {/* Assistant Avatar */}
                     {msg.role === 'assistant' && (
-                      <div className="w-8 h-8 rounded-full bg-[#01284e] flex items-center justify-center flex-shrink-0 mt-1">
-                        <Bot className="w-4 h-4 text-white" />
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden"
+                        style={{ background: widgetColor }}
+                      >
+                        {widgetLogoUrl ? (
+                          <img src={widgetLogoUrl} alt={widgetName} className="w-full h-full object-contain" />
+                        ) : (
+                          <Bot className="w-4 h-4 text-white" />
+                        )}
                       </div>
                     )}
 
                     {/* Message Bubble */}
                     <div className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-[75%]`}>
-                      <div className={`rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed ${msg.role === 'user'
-                        ? 'bg-[#01284e] text-white rounded-br-md'
-                        : 'bg-white text-gray-800 border border-gray-100 rounded-bl-md'
-                        }`}>
+                      <div
+                        className={`rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed ${msg.role === 'user'
+                          ? 'text-white rounded-br-md'
+                          : 'bg-white text-gray-800 border border-gray-100 rounded-bl-md'
+                        }`}
+                        style={msg.role === 'user' ? { background: widgetColor } : undefined}
+                      >
                         <div dangerouslySetInnerHTML={{ __html: msg.isHtml ? msg.content : formatMessage(msg.content) }} />
                       </div>
-                      {/* Timestamp */}
                       <span className="text-xs text-gray-500 mt-1 px-1">
-                        {new Date(msg.timestamp || Date.now()).toLocaleTimeString("en-US", { timeZone: "America/Los_Angeles", hour: '2-digit', minute: '2-digit' })}
+                        {new Date(msg.timestamp || Date.now()).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
 
                     {/* User Avatar */}
                     {msg.role === 'user' && (
-                      <div className="w-8 h-8 rounded-full bg-[#01284e] flex items-center justify-center flex-shrink-0 mt-1">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
+                        style={{ background: widgetColor }}
+                      >
                         <User className="w-4 h-4 text-white" />
                       </div>
                     )}
@@ -517,7 +631,7 @@ export default function AIChatInterface({
                     <button
                       key={suggestion}
                       onClick={() => handleSuggestionClick(suggestion)}
-                      className="whitespace-nowrap px-4 py-2 rounded-full border border-gray-200 bg-white text-[13px] text-gray-700 hover:border-[#01284e] hover:text-[#01284e] hover:bg-blue-50/50 transition-all shadow-sm flex-shrink-0 cursor-pointer"
+                      className="whitespace-nowrap px-4 py-2 rounded-full border border-gray-200 bg-white text-[13px] text-gray-700 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all shadow-sm flex-shrink-0 cursor-pointer"
                     >
                       {suggestion}
                     </button>
@@ -540,10 +654,19 @@ export default function AIChatInterface({
                     disabled={loading}
                   />
                   <button
+                    onClick={toggleListening}
+                    type="button"
+                    className={`p-2 rounded-full transition-all mr-1 ${isListening ? 'text-red-500 animate-pulse bg-red-50' : 'text-gray-400 hover:text-primary hover:bg-gray-50'}`}
+                    title={isListening ? "Stop listening" : "Start voice typing"}
+                  >
+                    {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </button>
+                  <button
                     id="chat-send-button"
                     onClick={() => sendMessage()}
                     disabled={loading || !query.trim()}
-                    className="w-9 h-9 rounded-full bg-[#01284e] flex items-center justify-center text-white shadow-sm hover:shadow-md hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm hover:shadow-md hover:scale-105 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                    style={{ background: widgetColor }}
                   >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
                   </button>

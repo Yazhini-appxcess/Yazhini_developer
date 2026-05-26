@@ -6,10 +6,11 @@ import Link from "next/link";
 import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
 import { API_ENDPOINTS } from "@/lib/api";
-import { Trash2 } from "lucide-react";
-import { getAdminUser } from "@/lib/auth";
+import { Trash2, ArrowUpRight, TrendingUp, TrendingDown, FileText, ArrowRight, ShieldCheck, Box, Info } from "lucide-react";
+import { getAdminUser, getAuthToken, AdminUser, authFetch } from "@/lib/auth";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface Document {
   id: number;
@@ -49,16 +50,28 @@ interface EngagementData {
   queries: number;
 }
 
+interface TokenUsageData {
+  labels: string[];
+  datasets: {
+    name: string;
+    data: number[];
+    color: string;
+  }[];
+  total_usage: number;
+  estimated_cost?: number;
+}
+
 export default function Home() {
   const pathname = usePathname();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "external" | "internal">("all");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [engagementData, setEngagementData] = useState<EngagementData[]>([]);
+  const [tokenUsageData, setTokenUsageData] = useState<TokenUsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [adminUser, setAdminUser] = useState<any>(null);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
 
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
@@ -67,17 +80,14 @@ export default function Home() {
 
     try {
       setDeletingId(id);
-      const token = localStorage.getItem("adminToken");
-      const response = await fetch(API_ENDPOINTS.documents.delete(id), {
-        method: "DELETE",
-        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      const response = await authFetch(API_ENDPOINTS.documents.delete(id), {
+        method: "DELETE"
       });
 
       if (!response.ok) {
         throw new Error("Failed to delete document");
       }
 
-      // Remove from list
       setDocuments(documents.filter((doc) => doc.id !== id));
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete document");
@@ -89,10 +99,11 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [docsResponse, statsResponse, activityResponse] = await Promise.all([
-          fetch(API_ENDPOINTS.documents.list),
-          fetch(API_ENDPOINTS.dashboard.today(activeTab)),
-          fetch(API_ENDPOINTS.dashboard.visitors("day", activeTab))
+        const [docsResponse, statsResponse, activityResponse, tokenUsageResponse] = await Promise.all([
+          authFetch(API_ENDPOINTS.documents.list),
+          authFetch(API_ENDPOINTS.dashboard.today(activeTab)),
+          authFetch(API_ENDPOINTS.dashboard.visitors("day", activeTab)),
+          authFetch(API_ENDPOINTS.dashboard.tokenUsage("day", activeTab))
         ]);
 
         const user = getAdminUser();
@@ -114,22 +125,16 @@ export default function Home() {
         if (activityResponse.ok) {
           const activityData = await activityResponse.json();
 
-          // Generate last 7 days based on California time
           const days = [];
           for (let i = 6; i >= 0; i--) {
-            // Get current date in California
             const now = new Date();
             const caDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
             caDate.setDate(caDate.getDate() - i);
-            days.push(caDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })); // "Feb 02"
+            days.push(caDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
           }
 
-          // Merge with API data
           const mergedData = days.map(day => {
-            const found = activityData.data.find((item: any) => {
-              // API returns "Feb 02" format, check for match
-              // Depending on backend, handle date normalization
-              // Assuming backend returns "MMM DD" or we need to normalize key
+            const found = activityData.data.find((item: EngagementData) => {
               return item.day === day || item.day.replace(" 0", " ") === day.replace(" 0", " ");
             });
             return found || {
@@ -142,6 +147,11 @@ export default function Home() {
           });
 
           setEngagementData(mergedData);
+        }
+
+        if (tokenUsageResponse.ok) {
+          const tokenData = await tokenUsageResponse.json();
+          setTokenUsageData(tokenData);
         }
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
@@ -161,9 +171,9 @@ export default function Home() {
   };
 
   const getFileIconColor = (mimeType: string) => {
-    if (mimeType.includes("pdf")) return "text-red-500";
+    if (mimeType.includes("pdf")) return "text-rose-500";
     if (mimeType.includes("word") || mimeType.includes("doc")) return "text-blue-500";
-    if (mimeType.includes("excel") || mimeType.includes("sheet")) return "text-green-500";
+    if (mimeType.includes("excel") || mimeType.includes("sheet")) return "text-emerald-500";
     return "text-slate-400";
   };
 
@@ -179,7 +189,6 @@ export default function Home() {
 
   const formatXAxis = (tickItem: string) => {
     try {
-      // tickItem is expected to be "Feb 02"
       const date = new Date(`${tickItem}, ${new Date().getFullYear()}`);
       return date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
     } catch (e) {
@@ -194,436 +203,528 @@ export default function Home() {
     return "File";
   };
 
+  // Recharts Custom Dark Glass Tooltip with micro-glows
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-950/90 backdrop-blur-md p-3.5 border border-white/10 rounded-2xl shadow-2xl text-left text-xs text-white animate-scale-in">
+          <p className="text-slate-400 font-mono text-[9px] mb-1.5 uppercase tracking-wider">{label}</p>
+          {payload.map((p: any, idx: number) => (
+            <div key={idx} className="flex items-center gap-3 mt-1.5">
+              <span className="w-2 h-2 rounded-full shadow-[0_0_8px]" style={{ backgroundColor: p.color || p.fill, boxShadow: `0 0 8px ${p.color || p.fill}` }} />
+              <span className="text-slate-300 font-medium">{p.name}:</span>
+              <span className="font-bold font-mono ml-auto text-white">{p.value.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const statCards = [
+    {
+      label: "Documents Processed",
+      value: stats ? stats.documents_processed.toLocaleString() : "—",
+      change: stats?.documents_change ?? null,
+      icon: "article",
+      cardClass: "stat-card-emerald",
+      iconColor: "text-emerald-500",
+      accentGlow: "shadow-emerald-500/5",
+      accentBar: "bg-emerald-500",
+    },
+    {
+      label: "AI Queries Run",
+      value: stats ? stats.ai_queries.toLocaleString() : "—",
+      change: stats?.ai_queries_change ?? null,
+      icon: "forum",
+      cardClass: "stat-card-violet",
+      iconColor: "text-violet-500",
+      accentGlow: "shadow-violet-500/5",
+      accentBar: "bg-violet-500",
+    },
+    {
+      label: "Active Core Sessions",
+      value: stats ? stats.active_sessions.toLocaleString() : "—",
+      change: stats?.active_sessions_change ?? null,
+      icon: "sensors",
+      cardClass: "stat-card-amber",
+      iconColor: "text-amber-500",
+      accentGlow: "shadow-amber-500/5",
+      accentBar: "bg-amber-500",
+    },
+    {
+      label: "Form Grounding Data",
+      value: stats ? stats.form_submissions?.toLocaleString() ?? "0" : "—",
+      change: stats?.form_submissions_change ?? null,
+      icon: "assignment_turned_in",
+      cardClass: "stat-card-blue",
+      iconColor: "text-blue-500",
+      accentGlow: "shadow-blue-500/5",
+      accentBar: "bg-blue-500",
+    },
+  ];
+
+  // Framer Motion Animation Variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.05 }
+    }
+  };
+
+  const widgetVariants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 180, damping: 20 } }
+  };
+
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-[#fafafa] overflow-hidden">
       <CLSidebar />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50">
+      {/* Main Content Layout */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
         <CLHeader />
 
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-7xl mx-auto space-y-8">
-
-            {/* Global Filter */}
-            <div className="flex items-center justify-between">
+        <main className="flex-1 overflow-y-auto custom-scrollbar p-6">
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="max-w-[1400px] mx-auto space-y-6 pb-12"
+          >
+            
+            {/* Page Header and Tabs */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Platform Overview</h1>
-                <p className="text-sm text-slate-500">Track performance and engagement across agents</p>
+                <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase font-display">
+                  Platform Grounding Node
+                </h1>
+                <p className="text-[12px] text-slate-500 font-medium tracking-tight">Real-time statistics & ingested intelligence data metrics</p>
               </div>
-              <div className="flex items-center gap-1 bg-white p-1.5 rounded-xl shadow-sm border border-slate-200">
-                <button
-                  onClick={() => setActiveTab("all")}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${activeTab === "all" ? "bg-[#01284e] text-white shadow-md" : "text-slate-500 hover:bg-slate-50"}`}
-                >
-                  All Segments
-                </button>
-                <button
-                  onClick={() => setActiveTab("external")}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${activeTab === "external" ? "bg-[#01284e] text-white shadow-md" : "text-slate-500 hover:bg-slate-50"}`}
-                >
-                  External Assistant
-                </button>
-                <button
-                  onClick={() => setActiveTab("internal")}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wider ${activeTab === "internal" ? "bg-[#01284e] text-white shadow-md" : "text-slate-500 hover:bg-slate-50"}`}
-                >
-                  Copilot (Internal)
-                </button>
+
+              {/* Segment filter pills */}
+              <div className="flex items-center gap-1 bg-white border border-slate-200/80 p-1.5 rounded-2xl shadow-sm relative z-20">
+                {(["all", "external", "internal"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 py-2 text-[10px] font-bold rounded-xl transition-all duration-350 uppercase tracking-widest cursor-pointer relative ${
+                      activeTab === tab
+                        ? "text-white shadow-md shadow-indigo-600/10"
+                        : "text-slate-500 hover:text-slate-900"
+                    }`}
+                    style={
+                      activeTab === tab
+                        ? { background: "rgb(var(--primary-rgb))" }
+                        : {}
+                    }
+                  >
+                    {tab === "all" ? "Full Hub" : tab === "external" ? "External" : "Internal"}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-accent-emerald hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-emerald-50 rounded-xl">
-                    <span className="material-icons-round text-accent-emerald">article</span>
-                  </div>
-                  {stats && (
-                    <span className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${stats.documents_change.startsWith('+')
-                      ? 'text-emerald-600 bg-emerald-50'
-                      : 'text-red-600 bg-red-50'
-                      }`}>
-                      <span className="material-icons-round text-[14px] mr-1">
-                        {stats.documents_change.startsWith('+') ? 'trending_up' : 'trending_down'}
-                      </span>
-                      {stats.documents_change}
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-slate-500 text-sm font-medium mb-1">Documents Uploaded</h3>
-                <div className="flex items-end space-x-3 mt-1">
-                  <span className="text-4xl font-bold tracking-tight text-slate-900">{stats ? stats.documents_processed.toLocaleString() : '...'}</span>
-                  <div className="flex items-end space-x-1 pb-1">
-                    <div className="w-1.5 h-3 bg-emerald-200 rounded-full"></div>
-                    <div className="w-1.5 h-5 bg-emerald-400 rounded-full"></div>
-                    <div className="w-1.5 h-4 bg-accent-emerald rounded-full"></div>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">{stats ? stats.documents_change : '0%'} from yesterday</p>
-              </div>
+            {/* Metrics Grid */}
+            <motion.div 
+              variants={containerVariants}
+              className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5"
+            >
+              {statCards.map((card, idx) => (
+                <motion.div
+                  key={card.label}
+                  variants={widgetVariants}
+                  whileHover={{ y: -4, scale: 1.01 }}
+                  className={`${card.cardClass} p-5 rounded-2xl transition-all duration-300 relative overflow-hidden group shadow-sm border border-slate-200/80 hover:shadow-xl hover:border-slate-300 bg-white`}
+                >
+                  {/* Glass corner accent highlight */}
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50/50 rounded-bl-full pointer-events-none transition-all duration-300 group-hover:scale-110" />
 
-              <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-accent-violet hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-violet-50 rounded-xl">
-                    <span className="material-icons-round text-accent-violet">forum</span>
-                  </div>
-                  {stats && (
-                    <span className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${stats.ai_queries_change.startsWith('+')
-                      ? 'text-emerald-600 bg-emerald-50'
-                      : 'text-red-600 bg-red-50'
+                  <div className="flex items-start justify-between mb-4 relative z-10">
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 shadow-sm flex items-center justify-center">
+                      <span className={`material-icons-round text-[22px] ${card.iconColor}`}>{card.icon}</span>
+                    </div>
+                    {card.change && (
+                      <span className={`flex items-center text-[10px] font-extrabold px-2.5 py-1.5 rounded-full shadow-sm ${
+                        card.change.startsWith('+')
+                          ? 'text-emerald-700 bg-emerald-50 border border-emerald-100'
+                          : 'text-rose-700 bg-rose-50 border border-rose-100'
                       }`}>
-                      <span className="material-icons-round text-[14px] mr-1">
-                        {stats.ai_queries_change.startsWith('+') ? 'trending_up' : 'trending_down'}
+                        {card.change.startsWith('+') ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
+                        {card.change}
                       </span>
-                      {stats.ai_queries_change}
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-slate-500 text-sm font-medium mb-1">AI Queries</h3>
-                <div className="flex items-end space-x-3 mt-1">
-                  <span className="text-4xl font-bold tracking-tight text-slate-900">{stats ? stats.ai_queries.toLocaleString() : '...'}</span>
-                  <div className="flex items-end space-x-1 pb-1">
-                    <div className="w-1.5 h-4 bg-violet-200 rounded-full"></div>
-                    <div className="w-1.5 h-2 bg-violet-400 rounded-full"></div>
-                    <div className="w-1.5 h-6 bg-accent-violet rounded-full"></div>
+                    )}
                   </div>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">{stats ? stats.ai_queries_change : '0%'} from yesterday</p>
-              </div>
 
-              <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-accent-amber hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 bg-amber-50 rounded-xl">
-                    <span className="material-icons-round text-accent-amber">sensors</span>
-                  </div>
-                  {stats && (
-                    <span className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${stats.active_sessions_change.startsWith('+')
-                      ? 'text-emerald-600 bg-emerald-50'
-                      : 'text-red-600 bg-red-50'
-                      }`}>
-                      <span className="material-icons-round text-[14px] mr-1">
-                        {stats.active_sessions_change.startsWith('+') ? 'trending_up' : 'trending_down'}
-                      </span>
-                      {stats.active_sessions_change}
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest relative z-10">{card.label}</p>
+                  <div className="flex items-end justify-between mt-2.5 relative z-10">
+                    <span className="text-[32px] font-black tracking-tight text-slate-800 leading-none font-display">
+                      {loading ? <span className="skeleton-shimmer inline-block w-20 h-9 rounded-xl" /> : card.value}
                     </span>
-                  )}
-                </div>
-                <h3 className="text-slate-500 text-sm font-medium mb-1">Active Sessions</h3>
-                <div className="flex items-end space-x-3 mt-1">
-                  <span className="text-4xl font-bold tracking-tight text-slate-900">{stats ? stats.active_sessions.toLocaleString() : '...'}</span>
-                  <div className="flex items-end space-x-1 pb-1">
-                    <div className="w-1.5 h-3 bg-amber-200 rounded-full"></div>
-                    <div className="w-1.5 h-4 bg-amber-400 rounded-full"></div>
-                    <div className="w-1.5 h-5 bg-accent-amber rounded-full"></div>
+                    <div className="flex items-end gap-1.5 pb-1">
+                      <div className={`w-1 h-3.5 ${card.accentBar} opacity-30 rounded-full`} />
+                      <div className={`w-1 h-5 ${card.accentBar} opacity-60 rounded-full`} />
+                      <div className={`w-1 h-6.5 ${card.accentBar} rounded-full animate-pulse-slow`} />
+                    </div>
                   </div>
-                </div>
-                <p className="text-xs text-slate-400 mt-2">{stats ? stats.active_sessions_change : '0%'} from yesterday</p>
-              </div>
-            </div>
+                  {card.change && (
+                    <p className="text-[9.5px] text-slate-400 mt-3 font-semibold relative z-10">{card.change} against yesterday benchmark</p>
+                  )}
+                </motion.div>
+              ))}
+            </motion.div>
 
             {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Engagements Chart */}
-              <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-xl border border-slate-200/50 relative">
-                <div className="flex items-center justify-between mb-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Area Chart: Platform Engagements */}
+              <motion.div 
+                variants={widgetVariants}
+                className="lg:col-span-2 premium-card p-6 rounded-2xl relative overflow-hidden bg-white border border-slate-200/80 shadow-sm"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h3 className="text-lg font-bold tracking-tight text-slate-900">
-                      Platform Engagements
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Weekly interactions overview
-                    </p>
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Interface Engagements</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Grounding data ingestion query trends</p>
                   </div>
-
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-accent-violet"></span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Conversations</span>
+                  <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Conversations</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-accent-emerald"></span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Queries</span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Queries</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="h-[300px] w-full">
+                <div className="h-[280px] w-full">
                   {engagementData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={engagementData}>
                         <defs>
-                          {/* Violet Gradient for Conversations */}
-                          <linearGradient id="areaGradientViolet" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.2} />
-                            <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                          <linearGradient id="gradViolet" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.15} />
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
                           </linearGradient>
-                          <linearGradient id="lineGradientViolet" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stopColor="#8b5cf6" />
-                            <stop offset="100%" stopColor="#ec4899" />
-                          </linearGradient>
-
-                          {/* Emerald Gradient for Sessions */}
-                          <linearGradient id="areaGradientEmerald" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
+                          <linearGradient id="gradEmerald" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity={0.15} />
                             <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                           </linearGradient>
-                          <linearGradient id="lineGradientEmerald" x1="0" y1="0" x2="1" y2="0">
-                            <stop offset="0%" stopColor="#10b981" />
-                            <stop offset="100%" stopColor="#34d399" />
-                          </linearGradient>
                         </defs>
-                        <CartesianGrid vertical={false} stroke="#f1f5f9" />
+                        <CartesianGrid vertical={false} stroke="rgba(0,0,0,0.03)" />
                         <XAxis
                           dataKey="day"
                           tickFormatter={formatXAxis}
                           axisLine={false}
                           tickLine={false}
-                          tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
-                          dy={15}
+                          tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                          dy={12}
                         />
-                        <Tooltip
-                          cursor={{ stroke: '#cbd5e1', strokeDasharray: '3 3' }}
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                          itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
                         />
+                        <Tooltip content={<CustomTooltip />} />
                         <Area
                           type="monotone"
                           dataKey="conversations"
-                          stroke="url(#lineGradientViolet)"
-                          strokeWidth={4}
-                          fill="url(#areaGradientViolet)"
-                          dot={{ fill: '#8b5cf6', stroke: 'white', strokeWidth: 3, r: 6 }}
-                          activeDot={{ r: 8, strokeWidth: 0 }}
+                          stroke="#6366f1"
+                          strokeWidth={2.5}
+                          fill="url(#gradViolet)"
+                          dot={false}
+                          activeDot={{ r: 5, stroke: '#6366f1', strokeWidth: 2, fill: '#fff' }}
                           name="Conversations"
                         />
                         <Area
                           type="monotone"
                           dataKey="queries"
-                          stroke="url(#lineGradientEmerald)"
-                          strokeWidth={4}
-                          fill="url(#areaGradientEmerald)"
-                          dot={{ fill: '#10b981', stroke: 'white', strokeWidth: 3, r: 6 }}
-                          activeDot={{ r: 8, strokeWidth: 0 }}
+                          stroke="#10b981"
+                          strokeWidth={2.5}
+                          fill="url(#gradEmerald)"
+                          dot={false}
+                          activeDot={{ r: 5, stroke: '#10b981', strokeWidth: 2, fill: '#fff' }}
                           name="Queries"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                      <span className="material-icons-round text-3xl mb-2">show_chart</span>
-                      <p className="text-sm">No engagement data available</p>
+                      <span className="material-icons-round text-4xl mb-2 text-indigo-500 animate-pulse">show_chart</span>
+                      <p className="text-[11px] font-bold uppercase tracking-widest">Awaiting engagement metrics...</p>
                     </div>
                   )}
                 </div>
-              </div>
+              </motion.div>
 
-              {/* Query Activity */}
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-200/50 flex flex-col justify-between">
-                <div className="mb-8 pl-1">
-                  <h3 className="text-lg font-bold tracking-tight text-slate-900">Query Activity</h3>
-                  <p className="text-xs text-slate-500 font-medium">Weekly query trends</p>
+              {/* Bar Chart: Weekly Query Trends */}
+              <motion.div 
+                variants={widgetVariants}
+                className="premium-card p-6 rounded-2xl relative overflow-hidden bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between"
+              >
+                <div className="mb-4">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Query Logs</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Log query counts by node</p>
                 </div>
 
-                <div className="h-64 flex flex-col justify-between relative">
-                  {/* Grid lines */}
-                  <div className="absolute inset-0 h-48 grid grid-rows-4 pointer-events-none -z-10 opacity-50 w-full">
-                    <div className="border-t border-slate-100 dark:border-slate-700 border-dashed"></div>
-                    <div className="border-t border-slate-100 dark:border-slate-700 border-dashed"></div>
-                    <div className="border-t border-slate-100 dark:border-slate-700 border-dashed"></div>
-                    <div className="border-t border-slate-100 dark:border-slate-700 border-dashed"></div>
+                <div className="h-44 relative flex items-end justify-between px-2">
+                  {/* Dashed background grids */}
+                  <div className="absolute inset-0 h-40 grid grid-rows-4 pointer-events-none opacity-20 w-full">
+                    {[0,1,2,3].map(i => (
+                      <div key={i} className="border-t border-slate-200 border-dashed"></div>
+                    ))}
                   </div>
 
-                  {/* Bars */}
-                  <div className="flex items-end justify-between h-48 px-2 relative z-10">
-                    {(() => {
-                      // Calculate default active index (max query day) once
-                      const maxQueries = Math.max(...engagementData.map(e => Number(e.queries)), 0);
-                      const defaultActiveIndex = engagementData.findIndex(e => Number(e.queries) === maxQueries);
+                  {/* Interactive Bars */}
+                  {(() => {
+                    const maxQueries = Math.max(...engagementData.map(e => Number(e.queries)), 0);
+                    const defaultActiveIndex = engagementData.length - 1;
 
-                      return engagementData.map((d, i) => {
-                        const max = Math.max(maxQueries, 1);
+                    return engagementData.map((d, i) => {
+                      const max = Math.max(maxQueries, 1);
+                      const actualHeight = Math.max((Number(d.queries) / max) * 100, 15);
+                      const isActive = hoveredBarIndex !== null ? hoveredBarIndex === i : i === defaultActiveIndex;
+                      
+                      const barColors = [
+                        'from-indigo-500 to-indigo-600',
+                        'from-violet-500 to-purple-600',
+                        'from-blue-500 to-cyan-600',
+                        'from-amber-500 to-orange-600',
+                        'from-emerald-500 to-teal-600',
+                        'from-indigo-500 to-purple-600',
+                        'from-cyan-500 to-blue-600',
+                      ];
 
-                        // Pyramid pattern for default state
-                        const pyramidHeights = [30, 45, 65, 85, 65, 45, 30];
-                        const defaultHeight = pyramidHeights[i] || 30;
-
-                        // Actual height based on data (min 10% for visibility if 0)
-                        const actualHeight = Math.max((Number(d.queries) / max) * 100, 10);
-
-                        // Determine if this bar is active (hovered OR default)
-                        const isActive = hoveredBarIndex !== null ? hoveredBarIndex === i : i === defaultActiveIndex;
-
-                        // Use actual height if active, otherwise pyramid height
-                        const heightPercentage = isActive ? actualHeight : defaultHeight;
-
-                        // Colors for each day
-                        const barColors = [
-                          'bg-violet-400 group-hover:bg-violet-400', // Mon
-                          'bg-pink-400 group-hover:bg-pink-400',   // Tue
-                          'bg-blue-400 group-hover:bg-blue-400',   // Wed
-                          'bg-amber-400 group-hover:bg-amber-400', // Thu
-                          'bg-emerald-400 group-hover:bg-emerald-400', // Fri
-                          'bg-indigo-400 group-hover:bg-indigo-400', // Sat
-                          'bg-cyan-400 group-hover:bg-cyan-400',   // Sun
-                        ];
-
-                        const activeColor = barColors[i % barColors.length];
-
-                        return (
-                          <div
-                            key={i}
-                            className="flex flex-col items-center flex-1 group h-full justify-end cursor-pointer"
-                            onMouseEnter={() => setHoveredBarIndex(i)}
-                            onMouseLeave={() => setHoveredBarIndex(null)}
+                      return (
+                        <div
+                          key={i}
+                          className="flex flex-col items-center flex-1 h-full justify-end cursor-pointer relative z-10"
+                          onMouseEnter={() => setHoveredBarIndex(i)}
+                          onMouseLeave={() => setHoveredBarIndex(null)}
+                        >
+                          <motion.div
+                            animate={{ 
+                              height: `${actualHeight}%`,
+                              scaleX: isActive ? 1.15 : 1
+                            }}
+                            className={`w-3 rounded-full bg-gradient-to-t ${
+                              isActive ? barColors[i % barColors.length] : 'from-slate-100 to-slate-200'
+                            } relative transition-all duration-300`}
                           >
-                            <div
-                              className={`w-3 rounded-full transition-all duration-500 ease-out relative ${isActive ? activeColor : 'bg-slate-50'}`}
-                              style={{ height: `${heightPercentage}%` }}
-                            >
-                              {/* Tooltip */}
-                              <div className={`absolute -top-10 left-1/2 -translate-x-1/2
-                                     bg-slate-900 text-white text-[10px]
-                                     px-2 py-1 rounded shadow-lg whitespace-nowrap
-                                     after:content-[''] after:absolute after:top-full
-                                     after:left-1/2 after:-translate-x-1/2
-                                     after:border-4 after:border-transparent
-                                     after:border-t-slate-900
-                                     transform transition-all duration-300 ${isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'} pointer-events-none`}>
-                                {d.queries} Queries
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-
-                  {/* Labels */}
-                  <div className="flex justify-between px-1 mt-2">
-                    {(() => {
-                      const maxQueries = Math.max(...engagementData.map(e => Number(e.queries)), 0);
-                      const defaultActiveIndex = engagementData.findIndex(e => Number(e.queries) === maxQueries);
-
-                      return engagementData.map((d, i) => {
-                        const dayName = new Date(d.day + ", " + new Date().getFullYear()).toLocaleDateString('en-US', { weekday: 'short' });
-                        const isActive = hoveredBarIndex !== null ? hoveredBarIndex === i : i === defaultActiveIndex;
-
-                        const barColors = [
-                          'text-violet-500',
-                          'text-pink-500',
-                          'text-blue-500',
-                          'text-amber-500',
-                          'text-emerald-500',
-                          'text-indigo-500',
-                          'text-cyan-500',
-                        ];
-                        const activeTextColor = barColors[i % barColors.length];
-
-                        return (
-                          <div key={i} className="flex-1 text-center group">
-                            <span className={`text-[9px] font-medium transition-colors duration-300 ${isActive ? `${activeTextColor} font-bold` : 'text-slate-400'}`}>
-                              {dayName}
-                            </span>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
+                            {/* Popup Tooltip bubble */}
+                            <AnimatePresence>
+                              {isActive && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: 10, scale: 0.8 }}
+                                  className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-950/90 border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-xl whitespace-nowrap shadow-xl z-50 pointer-events-none"
+                                >
+                                  {d.queries}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
-              </div>
+
+                {/* Date labels */}
+                <div className="flex justify-between px-1 mt-4 border-t border-slate-100 pt-2.5">
+                  {engagementData.map((d, i) => {
+                    const dayName = new Date(d.day + ", " + new Date().getFullYear())
+                      .toLocaleDateString('en-US', { weekday: 'short' });
+                    const isActive = hoveredBarIndex === i;
+
+                    return (
+                      <div key={i} className="flex-1 text-center">
+                        <span className={`text-[9px] font-bold tracking-tight transition-colors duration-200 ${
+                          isActive ? 'text-indigo-600' : 'text-slate-400'
+                        }`}>
+                          {dayName}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
             </div>
 
-            {/* Recent Documents */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <h3 className="font-bold text-lg text-slate-900">Recent Documents</h3>
+            {/* Token Usage Section */}
+            <motion.div 
+              variants={widgetVariants}
+              className="premium-card p-6 rounded-2xl relative overflow-hidden bg-white border border-slate-200/80 shadow-sm"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">System Token Consumption</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Model token allocation & estimated computational expenses</p>
                 </div>
-                <Link href="/documents" className="text-primary text-sm font-bold hover:underline">View All</Link>
+                {tokenUsageData && (
+                  <div className="flex items-center gap-6 bg-slate-50 border border-slate-200/60 px-4 py-2 rounded-xl shadow-sm">
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Tokens</p>
+                      <p className="text-base font-black text-slate-800 tracking-tight font-mono mt-0.5">{tokenUsageData.total_usage.toLocaleString()}</p>
+                    </div>
+                    <div className="h-8 w-px bg-slate-200" />
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Est. Cost</p>
+                      <p className="text-base font-black text-emerald-600 tracking-tight font-mono mt-0.5">${tokenUsageData.estimated_cost?.toFixed(4) ?? "0.00"}</p>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              <div className="h-[280px] w-full">
+                {tokenUsageData ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={tokenUsageData.labels.map((label, i) => ({
+                      label,
+                      prompt: tokenUsageData.datasets[0].data[i],
+                      completion: tokenUsageData.datasets[1].data[i]
+                    }))}>
+                      <CartesianGrid vertical={false} stroke="rgba(0,0,0,0.03)" />
+                      <XAxis
+                        dataKey="label"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                        dy={10}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend
+                        iconType="circle"
+                        wrapperStyle={{ paddingTop: '16px', fontSize: '10px', fontWeight: 'bold', color: '#64748b' }}
+                      />
+                      <Bar dataKey="prompt" name="Prompt (Inputs)" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="completion" name="Completion (Outputs)" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <span className="material-icons-round text-4xl mb-2 text-indigo-500 animate-pulse">bar_chart</span>
+                    <p className="text-[11px] font-bold uppercase tracking-widest">No usage tokens indexed yet</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Recent Documents Table Section */}
+            <motion.div 
+              variants={widgetVariants}
+              className="premium-card rounded-2xl overflow-hidden relative border border-slate-200/80 bg-white shadow-sm"
+            >
+              <div className="px-6 py-5 border-b border-slate-150 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Indexed Grounding Knowledge</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Most recently ingested corporate datasets and files</p>
+                </div>
+                <Link
+                  href="/documents"
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 hover:gap-2 transition-all duration-250"
+                >
+                  Explore All Knowledge
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-                      <th className="px-6 py-4">Document Name</th>
-                      <th className="px-6 py-4">Type</th>
-                      <th className="px-6 py-4">Agent</th>
-                      <th className="px-6 py-4">Status</th>
-                      {adminUser?.is_superuser && <th className="px-6 py-4">Uploaded By</th>}
-                      <th className="px-6 py-4">Date</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
+                    <tr className="bg-slate-50 border-b border-slate-200/80">
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Knowledge Asset</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">File Type</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Security Segment</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Grounding Status</th>
+                      {adminUser?.is_superuser && <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Operator</th>}
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Date Index</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 text-right">Operation</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                          Loading documents...
+                        <td colSpan={adminUser?.is_superuser ? 7 : 6} className="px-6 py-12 text-center text-slate-400 text-[12px]">
+                          <div className="flex items-center justify-center gap-2.5">
+                            <div className="w-4 h-4 border-2 border-indigo-650 border-t-transparent rounded-full animate-spin" />
+                            Reading knowledge indexes...
+                          </div>
                         </td>
                       </tr>
                     ) : documents.filter(d => activeTab === 'all' || d.agent_type === activeTab).length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                          No {activeTab === 'all' ? '' : activeTab === 'internal' ? 'Copilot ' : 'External '}documents found.
+                        <td colSpan={adminUser?.is_superuser ? 7 : 6} className="px-6 py-12 text-center text-slate-505 text-xs font-semibold">
+                          No {activeTab === 'all' ? '' : activeTab === 'internal' ? 'Internal ' : 'External '}documents parsed in current node block.
                         </td>
                       </tr>
                     ) : (
                       documents
                         .filter(d => activeTab === 'all' || d.agent_type === activeTab)
                         .map((doc) => (
-                          <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4 flex items-center space-x-3">
-                              <span className={`material-icons-round ${getFileIconColor(doc.mime_type)}`}>
-                                {getFileIcon(doc.mime_type)}
-                              </span>
-                              <span className="text-sm font-medium text-slate-900">{doc.name}</span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-slate-500">{getFileType(doc.mime_type)}</td>
+                          <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors duration-150">
                             <td className="px-6 py-4">
-                              <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${doc.agent_type === 'internal'
-                                ? "bg-slate-100 text-slate-700 border border-slate-200"
-                                : "bg-blue-50 text-blue-700 border border-blue-200"
-                                }`}>
-                                {doc.agent_type === 'internal' ? 'Copilot' : 'External'}
+                              <div className="flex items-center gap-3">
+                                <span className={`material-icons-round text-[20px] ${getFileIconColor(doc.mime_type)}`}>
+                                  {getFileIcon(doc.mime_type)}
+                                </span>
+                                <span className="text-xs font-bold text-slate-800 truncate max-w-[200px]">{doc.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-xs font-bold text-slate-400">{getFileType(doc.mime_type)}</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 text-[9px] font-black rounded-full uppercase tracking-widest ${
+                                doc.agent_type === 'internal' ? 'badge-internal animate-pulse-slow' : 'badge-external'
+                              }`}>
+                                {doc.agent_type === 'internal' ? 'Internal' : 'External'}
                               </span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${doc.processed
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-amber-100 text-amber-700"
-                                }`}>
-                                {doc.processed ? "Processed" : "Pending"}
+                              <span className={`px-2.5 py-1 text-[9px] font-black rounded-full uppercase tracking-widest ${
+                                doc.processed ? 'badge-processed' : 'badge-pending animate-pulse'
+                              }`}>
+                                {doc.processed ? 'Synced' : 'Pending'}
                               </span>
                             </td>
                             {adminUser?.is_superuser && (
-                              <td className="px-6 py-4 text-sm text-slate-900">
-                                {doc.uploader ? `${doc.uploader.first_name} ${doc.uploader.last_name}` : 'Unknown'}
+                              <td className="px-6 py-4 text-xs font-bold text-slate-650">
+                                {doc.uploader ? `${doc.uploader.first_name} ${doc.uploader.last_name}` : 'Super Node'}
                               </td>
                             )}
-                            <td className="px-6 py-4 text-sm text-slate-500">{formatDate(doc.created_at)}</td>
+                            <td className="px-6 py-4 text-xs font-mono font-medium text-slate-400">{formatDate(doc.created_at)}</td>
                             <td className="px-6 py-4 text-right">
-                              <button
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDelete(doc.id, doc.name);
                                 }}
                                 disabled={deletingId === doc.id}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all cursor-pointer disabled:opacity-40"
                               >
                                 {deletingId === doc.id ? (
                                   <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-rose-600" />
                                     Deleting...
                                   </>
                                 ) : (
                                   <>
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                     Delete
                                   </>
                                 )}
-                              </button>
+                              </motion.button>
                             </td>
                           </tr>
                         ))
@@ -631,10 +732,25 @@ export default function Home() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
+            </motion.div>
+
+            {/* Governance warning alert */}
+            <motion.div 
+              variants={widgetVariants}
+              className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-5 flex gap-4 items-start shadow-sm"
+            >
+              <ShieldCheck className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Vector Grounding Guard Compliant</h4>
+                <p className="text-[11px] text-slate-600 mt-1 leading-relaxed font-medium">
+                  All knowledge nodes ingested into the portal are parsed and indexed locally in compliance with strict corporate sanitisation policies. Vector indexes are rebuilt and matched with credentials on user access nodes dynamically.
+                </p>
+              </div>
+            </motion.div>
+
+          </motion.div>
         </main>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 }

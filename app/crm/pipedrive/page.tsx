@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
-import { Save, Shield, User, Key, CheckCircle, ExternalLink, Activity } from "lucide-react";
+import { Save, Shield, User, Key, CheckCircle, ExternalLink, Activity, ArrowLeft } from "lucide-react";
 
 export default function PipedrivePage() {
     const router = useRouter();
@@ -45,20 +45,25 @@ export default function PipedrivePage() {
     };
 
     return (
-        <div className="flex h-screen w-screen bg-gray-50 overflow-hidden">
-            {/* Left Sidebar */}
+        <div className="flex h-screen w-screen bg-[#fafafa] overflow-hidden text-slate-900">
             <CLSidebar />
-
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
                 <CLHeader />
 
-                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                    <div className="max-w-4xl mx-auto">
-                        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
-                            <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-                                <div className="flex items-start space-x-5">
-                                    <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    <div className="max-w-[1400px] mx-auto space-y-6 pb-12">
+                        <button
+                            onClick={() => router.push("/crm")}
+                            className="flex items-center text-slate-500 hover:text-slate-800 transition-colors font-semibold text-[11px] uppercase tracking-wider group"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
+                            Back to CRM Hub
+                        </button>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                            <div className="p-6 border-b border-slate-100 bg-slate-50/[0.15] relative overflow-hidden">
+                                <div className="flex items-start space-x-4">
+                                    <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
                                         <img
                                             src="https://www.google.com/s2/favicons?domain=pipedrive.com&sz=128"
                                             alt="Pipedrive"
@@ -66,87 +71,92 @@ export default function PipedrivePage() {
                                         />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-bold text-slate-800 mb-1">Pipedrive Integration</h3>
-                                        <p className="text-slate-500">Connect your Pipedrive CRM to sync sales pipelines, activities, and organization data with Leucadia Copilot.</p>
+                                        <h3 className="text-xl font-bold text-slate-800 mb-1 tracking-tight">Pipedrive Integration</h3>
+                                        <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">Connect your Pipedrive CRM to sync sales pipelines, activities, and organization data with the Internal AI Assistant.</p>
                                     </div>
                                 </div>
                             </div>
 
                             <form onSubmit={handleSubmit}>
-                                <div className="p-8 space-y-8">
-                                    <div className="space-y-2">
-                                        <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <Key className="w-4 h-4 mr-2 text-[#01284e]/80" />
+                                <div className="p-6 space-y-6">
+                                    <div className="space-y-1.5">
+                                        <label className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <Key className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                                             Personal API Token
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#01284e]/20 focus:border-[#01284e] transition-all outline-none text-slate-800"
+                                            className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium shadow-sm"
                                             type="password"
                                             placeholder="Enter your Pipedrive API Token"
                                             value={config.apiToken}
                                             onChange={(e) => setConfig({ ...config, apiToken: e.target.value })}
                                         />
-                                        <p className="text-xs text-slate-400 italic">Found in Pipedrive Settings {`>`} Personal preferences {`>`} API</p>
+                                        <p className="text-[10px] text-slate-400 font-medium">Found in Pipedrive Settings {`>`} Personal preferences {`>`} API</p>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <User className="w-4 h-4 mr-2 text-[#01284e]/80" />
+                                    <div className="space-y-1.5">
+                                        <label className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <User className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                                             Pipedrive Company Domain
                                         </label>
                                         <div className="flex items-center space-x-2">
                                             <input
-                                                className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#01284e]/20 focus:border-[#01284e] transition-all outline-none text-slate-800"
+                                                className="flex-1 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium shadow-sm"
                                                 type="text"
                                                 placeholder="your-company"
                                                 value={config.companyName}
                                                 onChange={(e) => setConfig({ ...config, companyName: e.target.value })}
                                             />
-                                            <span className="text-slate-400 font-medium">.pipedrive.com</span>
+                                            <span className="text-slate-400 text-xs font-semibold">.pipedrive.com</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
+                                <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <a
                                         href="https://developers.pipedrive.com/docs/api/v1"
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-sm font-semibold text-[#01284e] hover:underline flex items-center"
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center"
                                     >
-                                        <ExternalLink className="w-4 h-4 mr-1.5" />
+                                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
                                         Pipedrive API Docs
                                     </a>
 
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="w-full sm:w-auto px-10 py-2.5 bg-[#01284e] hover:bg-primary text-white font-bold rounded-lg shadow-lg shadow-[#01284e]/20 transition-colors flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                        className="btn-primary w-full sm:w-auto px-6 py-2"
                                     >
-                                        <Save className="w-4 h-4 mr-2" />
-                                        {isSaved ? "Saved!" : isSaving ? "Saving..." : "Connect Pipedrive"}
+                                        {isSaved ? (
+                                            <><CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Saved!</>
+                                        ) : isSaving ? (
+                                            "Saving..."
+                                        ) : (
+                                            <><Save className="w-3.5 h-3.5 mr-1.5" /> Connect Pipedrive</>
+                                        )}
                                     </button>
                                 </div>
                             </form>
                         </div>
 
-                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl flex space-x-4">
-                                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0 text-blue-600">
-                                    <Shield className="w-6 h-6" />
+                        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex space-x-4 shadow-sm">
+                                <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0 text-indigo-600">
+                                    <Shield className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 mb-1">Direct API Access</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed">Leucadia uses your personal API token to sync deals and organization data securely between systems.</p>
+                                    <h4 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Direct API Access</h4>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">Leucadia uses your personal API token to sync deals and organization data securely between systems.</p>
                                 </div>
                             </div>
-                            <div className="p-6 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex space-x-4">
-                                <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 text-emerald-600">
-                                    <CheckCircle className="w-6 h-6" />
+                            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex space-x-4 shadow-sm">
+                                <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 text-emerald-600">
+                                    <CheckCircle className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 mb-1">Pipeline Insights</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed">AI analyzes your Pipedrive pipelines to provide recommendations on deal closure and next-step actions.</p>
+                                    <h4 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Pipeline Insights</h4>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">AI analyzes your Pipedrive pipelines to provide recommendations on deal closure and next-step actions.</p>
                                 </div>
                             </div>
                         </div>

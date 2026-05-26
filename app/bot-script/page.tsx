@@ -5,6 +5,7 @@ import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
 import { Copy, Check, Code } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api";
+import { getAuthToken } from "@/lib/auth";
 
 export default function BotScriptPage() {
   const [script, setScript] = useState("");
@@ -18,13 +19,18 @@ export default function BotScriptPage() {
   const loadScript = async () => {
     try {
       setLoading(true);
-      const response = await fetch(API_ENDPOINTS.bot.script);
+      const token = getAuthToken();
+      const headers: HeadersInit = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const response = await fetch(API_ENDPOINTS.bot.script, { headers });
       if (!response.ok) {
         throw new Error("Failed to load script");
       }
       const data = await response.json();
       setScript(data.script);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error loading script:", err);
     } finally {
       setLoading(false);
@@ -67,7 +73,7 @@ ${script}
                 </div>
                 <button
                   onClick={copyToClipboard}
-                  className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-colors flex items-center gap-2"
                 >
                   {copied ? (
                     <>
@@ -109,11 +115,11 @@ ${script}
                     </button>
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-blue-900 mb-2">
+                  <div className="bg-primary/5 border border-primary/10 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-primary mb-2">
                       How to use:
                     </h4>
-                    <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-primary/80">
                       <li>Copy the embed code above</li>
                       <li>Paste it before the closing &lt;/body&gt; tag of your website</li>
                       <li>The bot widget will appear in the bottom-right corner</li>
@@ -126,7 +132,7 @@ ${script}
                       🧪 Test the Bot:
                     </h4>
                     <p className="text-sm text-green-800 mb-2">
-                      We've created a test page where you can try the bot widget:
+                      We&apos;ve created a test page where you can try the bot widget:
                     </p>
                     <a
                       href="/test-bot.html"
@@ -146,4 +152,3 @@ ${script}
     </div>
   );
 }
-

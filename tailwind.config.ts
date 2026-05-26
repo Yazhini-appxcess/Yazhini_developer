@@ -12,7 +12,7 @@ const config: Config = {
     theme: {
         extend: {
             colors: {
-                primary: "#01284e",
+                primary: "rgb(var(--primary-rgb, 1 40 78) / <alpha-value>)",
                 secondary: {
                     50: '#f1f5f9',
                     100: '#e2e8f0',

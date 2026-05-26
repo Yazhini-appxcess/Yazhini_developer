@@ -8,7 +8,7 @@ const TAILWIND_CONFIG = {
     theme: {
         extend: {
             colors: {
-                "sb-primary": "#01264b",
+                "sb-primary": "var(--primary, #01264b)",
                 "sb-bg-light": "#f5f7f8",
                 "sb-bg-dark": "#0f1923",
                 "sb-secondary": "#8198b3",
@@ -52,10 +52,10 @@ const TAILWIND_CONFIG = {
 export default function HomePage() {
     useEffect(() => {
         // Apply Tailwind config if script is already loaded
-        // @ts-ignore
-        if (window.tailwind) {
-            // @ts-ignore
-            window.tailwind.config = TAILWIND_CONFIG;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const globalWindow = window as any;
+        if (globalWindow.tailwind) {
+            globalWindow.tailwind.config = TAILWIND_CONFIG;
         }
 
         // Reveal on scroll observer
@@ -115,10 +115,10 @@ export default function HomePage() {
                     src="https://cdn.tailwindcss.com?plugins=forms,container-queries"
                     strategy="beforeInteractive"
                     onLoad={() => {
-                        // @ts-ignore
-                        if (window.tailwind) {
-                            // @ts-ignore
-                            window.tailwind.config = TAILWIND_CONFIG;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const globalWindow = window as any;
+                        if (globalWindow.tailwind) {
+                            globalWindow.tailwind.config = TAILWIND_CONFIG;
                         }
                     }}
                 />
@@ -563,7 +563,7 @@ export default function HomePage() {
                                 Industry Milestone
                             </span>
                             <h2 className="text-white text-6xl md:text-8xl font-800 font-display leading-tight mb-12 drop-shadow-2xl">
-                                Building 25% of London's New Sustainable Transit Arteries
+                                Building 25% of London&apos;s New Sustainable Transit Arteries
                             </h2>
                             <div className="flex justify-center">
                                 <button className="bg-white text-sb-primary px-12 py-6 font-bold uppercase tracking-widest hover:bg-sb-gold hover:text-white transition-all shadow-xl">

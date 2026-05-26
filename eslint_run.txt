@@ -1,0 +1,212 @@
+﻿
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\activity-log\page.tsx
+   15:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   71:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  114:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\admin-management\page.tsx
+  130:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  178:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  217:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  248:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  293:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\ai-settings\page.tsx
+   69:23   error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  111:23   error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  185:117  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\ai\page.tsx
+  13:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  16:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\api-docs\page.tsx
+  182:46  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\backup\page.tsx
+   58:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   86:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  114:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\dashboard\ai-config\page.tsx
+   67:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  109:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\dashboard\config-site\page.tsx
+   38:42   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   82:48   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   86:51   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   87:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   94:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   96:45   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  100:84   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  101:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  241:77   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  348:81   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  392:81   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  412:75   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  465:78   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  471:79   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  496:134  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  564:78   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\dashboard\sidebar\page.tsx
+  191:145  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  315:219  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\dashboard\widget\page.tsx
+  274:74  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  330:65  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\login\page.tsx
+  34:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\appxcess\test-site\page.tsx
+   25:48  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   82:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  119:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  160:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  170:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  175:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  212:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  213:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  214:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  471:59  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\bot-script\page.tsx
+   27:19  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  129:25  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\crm\[slug]\page.tsx
+  27:13  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\crm\[slug]\page.tsx:27:13
+  25 |         const found = CRM_INTEGRATIONS.find(i => i.slug === slug);
+  26 |         if (found) {
+> 27 |             setIntegration(found);
+     |             ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  28 |         } else {
+  29 |             router.push("/crm");
+  30 |         }  react-hooks/set-state-in-effect
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\crm\salesforce\page.tsx
+   72:170  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  163:171  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\database-hub\page.tsx
+  37:138  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\database\[slug]\page.tsx
+   29:13   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\database\[slug]\page.tsx:29:13
+  27 |         const found = DATABASE_INTEGRATIONS.find(i => i.slug === slug);
+  28 |         if (found) {
+> 29 |             setIntegration(found);
+     |             ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  30 |         } else {
+  31 |             router.push("/database-hub");
+  32 |         }  react-hooks/set-state-in-effect
+  202:199  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                react/no-unescaped-entities
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\iot\page.tsx
+  334:50  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\iot\page.tsx:334:50
+  332 |
+  333 |                                             <div className="bg-slate-50/50 rounded-3xl p-8 border border-slate-100 backdrop-blur-sm">
+> 334 |                                                 <DeviceForm />
+      |                                                  ^^^^^^^^^^ This component is created during render
+  335 |                                             </div>
+  336 |                                         </div>
+  337 |
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\iot\page.tsx:95:24
+   93 |
+   94 |
+>  95 |     const DeviceForm = () => (
+      |                        ^^^^^^^
+>  96 |         <form onSubmit={handleAddDevice} className="space-y-5 text-left">
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  97 |             <div className="space-y-4">
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 229 |         </form>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 230 |     );
+      | ^^^^^^ The component is created during render here
+  231 |
+  232 |     return (
+  233 |         <div className="flex h-screen w-screen bg-gray-50 overflow-hidden text-slate-900">  react-hooks/static-components
+  439:30  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\iot\page.tsx:439:30
+  437 |                                 </button>
+  438 |                             </div>
+> 439 |                             <DeviceForm />
+      |                              ^^^^^^^^^^ This component is created during render
+  440 |                         </div>
+  441 |                     </div>
+  442 |                 )}
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\iot\page.tsx:95:24
+   93 |
+   94 |
+>  95 |     const DeviceForm = () => (
+      |                        ^^^^^^^
+>  96 |         <form onSubmit={handleAddDevice} className="space-y-5 text-left">
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  97 |             <div className="space-y-4">
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 229 |         </form>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 230 |     );
+      | ^^^^^^ The component is created during render here
+  231 |
+  232 |     return (
+  233 |         <div className="flex h-screen w-screen bg-gray-50 overflow-hidden text-slate-900">                                                                                                                        react-hooks/static-components
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\landing-page\page.tsx
+   38:16  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+   60:42  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  158:33  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  158:56  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  180:65  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  208:65  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  226:59  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  272:66  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  276:67  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+  297:72  error  Unexpected any. Specify a different type                         @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\login\page.tsx
+  11:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  76:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\messages\page.tsx
+  144:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  165:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\PRADEEP\INTERNSHIP\AppXcess\lwd\generic_bot\generic_bot_frontend\app\page.tsx
+   73:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  142:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Γ£û 77 problems (77 errors, 0 warnings)
+

@@ -5,6 +5,7 @@ import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
 import { MessageSquare, Trash2, ExternalLink, Calendar, User, Mail, Phone, Search, X } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api";
+import { getAuthToken, authFetch } from "@/lib/auth";
 
 // Function to parse markdown-like formatting
 const parseMessageContent = (content: string) => {
@@ -51,7 +52,7 @@ const parseMessageContent = (content: string) => {
       const formattedContent = parseInlineFormatting(bulletContent);
       elements.push(
         <div key={`line-${lineIndex}`} className="flex items-start gap-2 my-1">
-          <span className="font-bold mt-0.5 text-primary-600">•</span>
+          <span className="font-bold mt-0.5 text-primary">•</span>
           <span>{formattedContent}</span>
         </div>
       );
@@ -134,14 +135,14 @@ export default function MessagesPage() {
       if (type !== "all") {
         url += `?agent_type=${type}`;
       }
-      const response = await fetch(url);
+      const response = await authFetch(url);
       if (!response.ok) {
         throw new Error("Failed to load conversations");
       }
       const data = await response.json();
       setConversations(data.conversations || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to load conversations");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load conversations");
     } finally {
       setLoading(false);
     }
@@ -149,7 +150,7 @@ export default function MessagesPage() {
 
   const deleteConversation = async (id: string) => {
     try {
-      const response = await fetch(API_ENDPOINTS.conversations.delete(id), {
+      const response = await authFetch(API_ENDPOINTS.conversations.delete(id), {
         method: "DELETE",
       });
       if (!response.ok) {
@@ -159,8 +160,8 @@ export default function MessagesPage() {
       if (selectedConversation?.id === id) {
         setSelectedConversation(null);
       }
-    } catch (err: any) {
-      alert(err.message || "Failed to delete conversation");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete conversation");
     }
   };
 
@@ -181,9 +182,8 @@ export default function MessagesPage() {
       date = new Date(trimmed);
     }
 
-    // Convert to California timezone for display
+    // Convert to browser local timezone for display
     return date.toLocaleString("en-US", {
-      timeZone: "America/Los_Angeles",
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -208,67 +208,78 @@ export default function MessagesPage() {
       date = new Date(trimmed);
     }
 
-    // Convert to California timezone for display
+    // Convert to browser local timezone for display
     return date.toLocaleTimeString("en-US", {
-      timeZone: "America/Los_Angeles",
       hour: "2-digit",
       minute: "2-digit",
     });
   };
 
   return (
-    <div className="flex h-screen w-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen w-screen bg-[#fafafa] overflow-hidden">
       {/* Left Sidebar */}
       <CLSidebar />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
         {/* Header */}
         <CLHeader />
 
         {/* Messages Content */}
         <div className="flex-1 overflow-hidden flex">
           {/* Conversations List */}
-          <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-            <div className="p-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-3">
-                <MessageSquare className="w-5 h-5 text-primary" />
+          <div className="w-80 md:w-96 border-r border-slate-200 bg-white flex flex-col">
+            <div className="p-4 border-b border-slate-200 bg-slate-50/50">
+              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <MessageSquare className="w-4 h-4 text-indigo-650" />
                 Conversations
               </h2>
 
               {/* Filter Tabs */}
-              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 mb-4">
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 mb-4">
                 <button
                   onClick={() => setActiveTab("all")}
-                  className={`flex-1 py-2 text-xs font-medium rounded-md transition-all ${activeTab === "all" ? "bg-primary text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    activeTab === "all"
+                      ? "bg-white text-slate-800 shadow-sm border border-slate-200/50"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setActiveTab("external")}
-                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === "external" ? "bg-primary text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    activeTab === "external"
+                      ? "bg-white text-slate-800 shadow-sm border border-slate-200/50"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
                 >
                   External
                 </button>
                 <button
                   onClick={() => setActiveTab("internal")}
-                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === "internal" ? "bg-primary text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                    activeTab === "internal"
+                      ? "bg-white text-slate-800 shadow-sm border border-slate-200/50"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
                 >
-                  Copilot
+                  Internal
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search conversations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-text"
+                  className="search-input w-full pl-10 pr-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-[11px] font-semibold text-slate-500 mt-2.5">
                 {conversations.filter(conv =>
                   !searchQuery ||
                   conv.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -278,14 +289,14 @@ export default function MessagesPage() {
               </p>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
               {loading ? (
                 <div className="p-8 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                  <p className="text-sm text-gray-500">Loading conversations...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono">Loading data...</p>
                 </div>
               ) : error ? (
-                <div className="p-4 text-center text-red-500">{error}</div>
+                <div className="p-4 text-center text-xs font-semibold text-red-500">{error}</div>
               ) : conversations.filter(conv =>
                 !searchQuery ||
                 conv.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -293,8 +304,8 @@ export default function MessagesPage() {
                 conv.session_id.toLowerCase().includes(searchQuery.toLowerCase())
               ).length === 0 ? (
                 <div className="p-8 text-center">
-                  <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">
+                  <MessageSquare className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-xs font-semibold text-slate-500">
                     {searchQuery ? "No conversations found" : "No conversations yet"}
                   </p>
                 </div>
@@ -310,34 +321,45 @@ export default function MessagesPage() {
                     <div
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
-                      className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${selectedConversation?.id === conv.id
-                        ? "bg-primary/5 border-l-4 border-l-primary"
-                        : "hover:bg-gray-50"
-                        }`}
+                      className={`p-4 border-b border-slate-100 cursor-pointer transition-all ${
+                        selectedConversation?.id === conv.id
+                          ? "bg-indigo-50/30 border-l-2 border-l-indigo-600"
+                          : "hover:bg-slate-50/50"
+                      }`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${conv.user_name
-                              ? "bg-primary/10 text-primary"
-                              : "bg-gray-200 text-gray-600"
-                              }`}>
+                          <div className="flex items-center gap-2.5 mb-1">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+                              conv.user_name || conv.user_email
+                                ? "bg-indigo-50 text-indigo-750 border-indigo-100 font-bold"
+                                : "bg-slate-100 text-slate-650 border-slate-200"
+                            }`}>
                               {conv.user_name ? (
-                                <span className="text-sm font-semibold">
+                                <span className="text-xs font-bold">
                                   {conv.user_name.charAt(0).toUpperCase()}
                                 </span>
+                              ) : conv.user_email ? (
+                                <span className="text-xs font-bold">
+                                  {conv.user_email.charAt(0).toUpperCase()}
+                                </span>
                               ) : (
-                                <User className="w-5 h-5" />
+                                <User className="w-4 h-4" />
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 truncate">
-                                {conv.user_name || `Session: ${conv.session_id.substring(0, 12)}...`}
+                              <p className="text-xs font-bold text-slate-800 truncate">
+                                {conv.user_name || conv.user_email || `Session: ${conv.session_id.substring(0, 12)}...`}
                               </p>
-                              {conv.user_email && (
-                                <p className="text-xs text-gray-500 truncate mt-0.5 flex items-center gap-1">
+                              {conv.user_name && conv.user_email && (
+                                <p className="text-[10px] text-slate-500 truncate mt-0.5 flex items-center gap-1">
                                   <Mail className="w-3 h-3" />
                                   {conv.user_email}
+                                </p>
+                              )}
+                              {!conv.user_name && !conv.user_email && (
+                                <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                                  ID: {conv.session_id.substring(0, 12)}
                                 </p>
                               )}
                             </div>
@@ -350,27 +372,28 @@ export default function MessagesPage() {
                               deleteConversation(conv.id);
                             }
                           }}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
                       {/* Agent Type Badge */}
                       <div className="flex gap-2 mb-2">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${conv.agent_type === 'internal'
-                            ? 'bg-slate-100 text-slate-800 border border-slate-200'
-                            : 'bg-blue-50 text-blue-600 border border-blue-100'
-                          }`}>
-                          {conv.agent_type === 'internal' ? 'Copilot' : 'External'}
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                          conv.agent_type === 'internal'
+                            ? 'bg-slate-100 text-slate-650 border border-slate-200'
+                            : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                        }`}>
+                          {conv.agent_type === 'internal' ? 'Internal' : 'External'}
                         </span>
                       </div>
                       <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <Calendar className="w-3 h-3" />
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                          <Calendar className="w-3.5 h-3.5" />
                           {formatDate(conv.updated_at)}
                         </div>
-                        <span className="text-xs font-medium text-primary bg-primary/5 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50/50 border border-indigo-100 px-2 py-0.5 rounded-full">
                           {conv.messages.length} {conv.messages.length === 1 ? 'message' : 'messages'}
                         </span>
                       </div>
@@ -381,43 +404,48 @@ export default function MessagesPage() {
           </div>
 
           {/* Conversation Detail */}
-          <div className="flex-1 flex flex-col bg-gray-50">
+          <div className="flex-1 flex flex-col bg-slate-50/40">
             {selectedConversation ? (
               <>
-                <div className="p-4 border-b border-gray-200 bg-white shadow-sm">
+                <div className="p-4 border-b border-slate-200 bg-white shadow-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${selectedConversation.user_name
-                        ? "bg-primary/10 text-primary"
-                        : "bg-gray-200 text-gray-600"
-                        }`}>
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${
+                        selectedConversation.user_name || selectedConversation.user_email
+                          ? "bg-indigo-50 text-indigo-750 border-indigo-100 font-bold"
+                          : "bg-slate-100 text-slate-600 border-slate-200"
+                      }`}>
                         {selectedConversation.user_name ? (
-                          <span className="text-lg font-semibold">
+                          <span className="text-base font-bold">
                             {selectedConversation.user_name.charAt(0).toUpperCase()}
+                          </span>
+                        ) : selectedConversation.user_email ? (
+                          <span className="text-base font-bold">
+                            {selectedConversation.user_email.charAt(0).toUpperCase()}
                           </span>
                         ) : (
                           <User className="w-6 h-6" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                          {selectedConversation.user_name || "Conversation Details"}
+                        <h3 className="text-base font-bold text-slate-800 mb-1">
+                          {selectedConversation.user_name || selectedConversation.user_email || "Anonymous User"}
                         </h3>
-                        <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                        <div className="flex flex-wrap gap-3 text-xs text-slate-500 font-medium">
                           {selectedConversation.user_email && (
                             <div className="flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
+                              <Mail className="w-3.5 h-3.5 text-slate-400" />
                               <span>{selectedConversation.user_email}</span>
                             </div>
                           )}
                           {selectedConversation.user_phone && (
                             <div className="flex items-center gap-1">
-                              <Phone className="w-3 h-3" />
+                              <Phone className="w-3.5 h-3.5 text-slate-400" />
                               <span>{selectedConversation.user_phone}</span>
                             </div>
                           )}
                           <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             <span>Started: {formatDate(selectedConversation.created_at)}</span>
                           </div>
                         </div>
@@ -426,36 +454,43 @@ export default function MessagesPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                   {selectedConversation.messages.map((msg, index) => (
                     <div
                       key={index}
-                      className={`flex items-start gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"
-                        }`}
+                      className={`flex items-start gap-3 ${
+                        msg.role === "user" ? "justify-end" : "justify-start"
+                      }`}
                     >
                       {msg.role === "assistant" && (
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <MessageSquare className="w-4 h-4 text-primary" />
+                        <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
+                          <MessageSquare className="w-4 h-4 text-indigo-700" />
                         </div>
                       )}
                       <div
-                        className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${msg.role === "user"
-                          ? "bg-[#01284e] text-white rounded-tr-none"
-                          : "bg-white text-gray-900 border border-gray-200 rounded-tl-none"
-                          }`}
+                        className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
+                          msg.role === "user"
+                            ? "bg-slate-900 text-white rounded-tr-none"
+                            : "bg-white text-slate-800 border border-slate-200/80 rounded-tl-none"
+                        }`}
+                        style={
+                          msg.role === "user"
+                            ? { background: "rgb(var(--primary-rgb, 79 70 229))" }
+                            : undefined
+                        }
                       >
-                        <div className={`text-sm leading-relaxed ${msg.role === "user" ? "text-white" : "text-gray-800"
-                          }`}>
+                        <div className="text-sm leading-relaxed">
                           {msg.role === "assistant" ? parseMessageContent(msg.content) : msg.content}
                         </div>
-                        <p className={`text-xs mt-2 ${msg.role === "user" ? "text-white/70" : "text-gray-500"
-                          }`}>
+                        <p className={`text-[10px] mt-2 font-mono ${
+                          msg.role === "user" ? "text-white/70" : "text-slate-400"
+                        }`}>
                           {formatTime(msg.timestamp)}
                         </p>
                       </div>
                       {msg.role === "user" && (
-                        <div className="w-8 h-8 rounded-full bg-[#01284e] flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-white" />
+                        <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4 text-slate-650" />
                         </div>
                       )}
                     </div>
@@ -463,13 +498,13 @@ export default function MessagesPage() {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="w-8 h-8 text-gray-400" />
+              <div className="flex-1 flex items-center justify-center text-slate-500 bg-slate-50/10">
+                <div className="text-center max-w-sm bg-white border border-slate-200/80 rounded-2xl p-8 shadow-sm">
+                  <div className="w-16 h-16 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="w-7 h-7 text-indigo-700" />
                   </div>
-                  <p className="text-gray-600 font-medium">Select a conversation to view messages</p>
-                  <p className="text-sm text-gray-400 mt-1">Choose a conversation from the list to start reading</p>
+                  <h3 className="text-sm font-bold text-slate-800 mb-1">Select a conversation</h3>
+                  <p className="text-xs text-slate-500 leading-normal mt-1.5">Choose a conversation from the sidebar feed to load the message audit logs and session parameters.</p>
                 </div>
               </div>
             )}
@@ -479,4 +514,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-

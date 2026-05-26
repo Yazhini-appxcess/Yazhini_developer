@@ -66,8 +66,8 @@ export default function AISettingsPage() {
                     temperature: 0.7
                 });
             }
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "An error occurred");
         } finally {
             setLoading(false);
         }
@@ -108,8 +108,8 @@ export default function AISettingsPage() {
             setSuccessMessage("AI Configuration updated successfully!");
             setTimeout(() => setSuccessMessage(""), 3000);
             await loadConfigs();
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "An error occurred");
         }
     };
 
@@ -137,7 +137,7 @@ export default function AISettingsPage() {
                                     <Settings2 className="w-8 h-8 text-primary" />
                                     AI Instructions Management
                                 </h1>
-                                <p className="text-gray-600 mt-1">Configure system prompts and parameters for each AI agent.</p>
+                                <p className="text-gray-600 mt-1">Configure system prompts and parameters for each AI segment.</p>
                             </div>
                         </div>
 
@@ -158,7 +158,7 @@ export default function AISettingsPage() {
                             <button
                                 onClick={() => setActiveTab("external")}
                                 className={`px-6 py-2 rounded-lg font-medium transition-all ${activeTab === "external"
-                                    ? "bg-[#01284e] text-white shadow-md"
+                                    ? "bg-primary text-white shadow-md"
                                     : "text-gray-500 hover:bg-gray-50"
                                     }`}
                             >
@@ -167,22 +167,22 @@ export default function AISettingsPage() {
                             <button
                                 onClick={() => setActiveTab("internal")}
                                 className={`px-6 py-2 rounded-lg font-medium transition-all ${activeTab === "internal"
-                                    ? "bg-slate-800 text-white shadow-md"
+                                    ? "bg-primary text-white shadow-md"
                                     : "text-gray-500 hover:bg-gray-50"
                                     }`}
                             >
-                                Copilot (Internal)
+                                Internal Assistant
                             </button>
                         </div>
 
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                                 <h2 className="text-lg font-semibold text-gray-900">
-                                    {activeTab === "external" ? "External Assistant Configuration" : "Internal Copilot Configuration"}
+                                    {activeTab === "external" ? "External Assistant Configuration" : "Internal Assistant Configuration"}
                                 </h2>
-                                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100 rounded-full">
-                                    <Info className="w-4 h-4 text-blue-600" />
-                                    <span className="text-xs text-blue-700 font-medium">This prompt defines the AI's identity and behavior rules.</span>
+                                <div className="flex items-center gap-2 px-3 py-1 bg-primary/5 border border-primary/10 rounded-full">
+                                    <Info className="w-4 h-4 text-primary" />
+                                    <span className="text-xs text-primary/70 font-medium">This prompt defines the AI&apos;s identity and behavior rules.</span>
                                 </div>
                             </div>
 
@@ -196,7 +196,7 @@ export default function AISettingsPage() {
                                         value={formContent.system_prompt}
                                         onChange={(e) => setFormContent({ ...formContent, system_prompt: e.target.value })}
                                         className="w-full h-80 px-4 py-3 border border-gray-300 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm leading-relaxed"
-                                        placeholder="Enter agent instructions here..."
+                                        placeholder="Enter segment instructions here..."
                                         required
                                     />
                                 </div>
@@ -248,7 +248,7 @@ export default function AISettingsPage() {
                                     </button>
                                     <button
                                         type="submit"
-                                        className="flex items-center gap-2 px-8 py-3 bg-[#01284e] text-white rounded-xl font-bold hover:bg-primary shadow-lg shadow-blue-900/20 transition-all cursor-pointer"
+                                        className="flex items-center gap-2 px-8 py-3 bg-primary text-white rounded-xl font-bold hover:opacity-90 shadow-lg shadow-primary/20 transition-all cursor-pointer"
                                     >
                                         <Save className="w-5 h-5" />
                                         Save Instructions

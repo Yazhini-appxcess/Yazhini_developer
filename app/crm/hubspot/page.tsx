@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
-import { Save, Globe, Shield, User, Key, CheckCircle, ExternalLink, Link2 } from "lucide-react";
+import { Save, Globe, Shield, User, Key, CheckCircle, ExternalLink, Link2, ArrowLeft } from "lucide-react";
 
 export default function HubSpotPage() {
     const router = useRouter();
@@ -45,20 +45,25 @@ export default function HubSpotPage() {
     };
 
     return (
-        <div className="flex h-screen w-screen bg-gray-50 overflow-hidden">
-            {/* Left Sidebar */}
+        <div className="flex h-screen w-screen bg-[#fafafa] overflow-hidden text-slate-900">
             <CLSidebar />
-
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
                 <CLHeader />
 
-                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                    <div className="max-w-4xl mx-auto">
-                        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
-                            <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-                                <div className="flex items-start space-x-5">
-                                    <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    <div className="max-w-[1400px] mx-auto space-y-6 pb-12">
+                        <button
+                            onClick={() => router.push("/crm")}
+                            className="flex items-center text-slate-500 hover:text-slate-800 transition-colors font-semibold text-[11px] uppercase tracking-wider group"
+                        >
+                            <ArrowLeft className="w-3.5 h-3.5 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
+                            Back to CRM Hub
+                        </button>
+
+                        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                            <div className="p-6 border-b border-slate-100 bg-slate-50/[0.15] relative overflow-hidden">
+                                <div className="flex items-start space-x-4">
+                                    <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
                                         <img
                                             src="https://www.google.com/s2/favicons?domain=hubspot.com&sz=128"
                                             alt="HubSpot"
@@ -66,36 +71,36 @@ export default function HubSpotPage() {
                                         />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-bold text-slate-800 mb-1">HubSpot Integration</h3>
-                                        <p className="text-slate-500">Connect your HubSpot Portal to sync sales, marketing, and service data with Leucadia Copilot.</p>
+                                        <h3 className="text-xl font-bold text-slate-800 mb-1 tracking-tight">HubSpot Integration</h3>
+                                        <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">Connect your HubSpot Portal to sync sales, marketing, and service data with the internal AI Assistant.</p>
                                     </div>
                                 </div>
                             </div>
 
                             <form onSubmit={handleSubmit}>
-                                <div className="p-8 space-y-8">
-                                    <div className="space-y-2">
-                                        <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <Key className="w-4 h-4 mr-2 text-[#01284e]/80" />
+                                <div className="p-6 space-y-6">
+                                    <div className="space-y-1.5">
+                                        <label className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <Key className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                                             Private App Access Token
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#01284e]/20 focus:border-[#01284e] transition-all outline-none text-slate-800"
+                                            className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium shadow-sm"
                                             type="password"
                                             placeholder="pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                                             value={config.accessToken}
                                             onChange={(e) => setConfig({ ...config, accessToken: e.target.value })}
                                         />
-                                        <p className="text-xs text-slate-400 italic">Create a Private App in HubSpot Settings to get an Access Token.</p>
+                                        <p className="text-[10px] text-slate-400 font-medium">Create a Private App in HubSpot Settings to get an Access Token.</p>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <User className="w-4 h-4 mr-2 text-[#01284e]/80" />
+                                    <div className="space-y-1.5">
+                                        <label className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            <User className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                                             Portal ID (HubID)
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#01284e]/20 focus:border-[#01284e] transition-all outline-none text-slate-800"
+                                            className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all font-medium shadow-sm"
                                             type="text"
                                             placeholder="Enter your HubSpot HubID"
                                             value={config.portalId}
@@ -104,46 +109,51 @@ export default function HubSpotPage() {
                                     </div>
                                 </div>
 
-                                <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
+                                <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <a
                                         href="https://knowledge.hubspot.com/integrations/set-up-the-hubspot-integration"
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-sm font-semibold text-[#01284e] hover:underline flex items-center"
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center"
                                     >
-                                        <ExternalLink className="w-4 h-4 mr-1.5" />
+                                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
                                         HubSpot Guide
                                     </a>
 
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="w-full sm:w-auto px-10 py-2.5 bg-[#01284e] hover:bg-primary text-white font-bold rounded-lg shadow-lg shadow-[#01284e]/20 transition-colors flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                        className="btn-primary w-full sm:w-auto px-6 py-2"
                                     >
-                                        <Save className="w-4 h-4 mr-2" />
-                                        {isSaved ? "Saved!" : isSaving ? "Saving..." : "Verify Connection"}
+                                        {isSaved ? (
+                                            <><CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Saved!</>
+                                        ) : isSaving ? (
+                                            "Saving..."
+                                        ) : (
+                                            <><Save className="w-3.5 h-3.5 mr-1.5" /> Verify Connection</>
+                                        )}
                                     </button>
                                 </div>
                             </form>
                         </div>
 
-                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl flex space-x-4">
-                                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0 text-blue-600">
-                                    <Shield className="w-6 h-6" />
+                        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex space-x-4 shadow-sm">
+                                <div className="w-10 h-10 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0 text-indigo-600">
+                                    <Shield className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 mb-1">Private Apps</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed">Leucadia uses HubSpot Private Apps for better security control and specific permission scoping on your crm objects.</p>
+                                    <h4 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Private Apps</h4>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">Leucadia uses HubSpot Private Apps for better security control and specific permission scoping on your crm objects.</p>
                                 </div>
                             </div>
-                            <div className="p-6 bg-emerald-50/50 border border-emerald-100 rounded-2xl flex space-x-4">
-                                <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 text-emerald-600">
-                                    <CheckCircle className="w-6 h-6" />
+                            <div className="p-5 bg-white border border-slate-200/80 rounded-2xl flex space-x-4 shadow-sm">
+                                <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 text-emerald-600">
+                                    <CheckCircle className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800 mb-1">Marketing Context</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed">Connect marketing campaigns and emails to give the AI context on recent customer interactions and outbound communications.</p>
+                                    <h4 className="font-bold text-slate-800 text-xs mb-1 uppercase tracking-wider">Marketing Context</h4>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">Connect marketing campaigns and emails to give the AI context on recent customer interactions and outbound communications.</p>
                                 </div>
                             </div>
                         </div>

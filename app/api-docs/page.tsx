@@ -16,7 +16,8 @@ import {
     CheckCircle2,
     X,
     Key,
-    Activity
+    Activity,
+    Webhook
 } from "lucide-react";
 
 interface CustomIntegration {
@@ -76,12 +77,8 @@ export default function CustomAPIIntegrationsPage() {
                         {/* Header */}
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-center space-x-5">
-                                <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm">
-                                    <img
-                                        src="https://cdn-icons-png.flaticon.com/512/2165/2165004.png"
-                                        alt="API"
-                                        className="w-10 h-10 object-contain"
-                                    />
+                                <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20 shadow-sm transition-transform hover:scale-105 duration-300">
+                                    <Webhook className="w-8 h-8 text-primary" />
                                 </div>
                                 <div>
                                     <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">API Connector</h2>
@@ -90,7 +87,7 @@ export default function CustomAPIIntegrationsPage() {
                             </div>
                             <button
                                 onClick={() => setShowModal(true)}
-                                className="inline-flex items-center px-4 py-2.5 bg-[#01284e] text-white rounded-lg hover:bg-primary transition-colors font-bold shadow-lg shadow-blue-900/10 cursor-pointer"
+                                className="inline-flex items-center px-4 py-2.5 bg-primary text-white rounded-lg hover:opacity-90 transition-colors font-bold shadow-lg shadow-primary/10 cursor-pointer"
                             >
                                 <Plus className="w-5 h-5 mr-2" />
                                 Add Custom API
@@ -100,7 +97,7 @@ export default function CustomAPIIntegrationsPage() {
                         {/* Summary Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                                <Activity className="w-8 h-8 text-blue-600 mb-4" />
+                                <Activity className="w-8 h-8 text-primary mb-4" />
                                 <h3 className="text-2xl font-bold text-slate-800">{integrations.length}</h3>
                                 <p className="text-sm text-slate-500">Connected Services</p>
                             </div>
@@ -138,7 +135,7 @@ export default function CustomAPIIntegrationsPage() {
                                                 {item.baseUrl}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                                                <span className="px-2 py-1 bg-primary/10 text-primary rounded-md text-[10px] font-bold uppercase tracking-wider">
                                                     {item.authType}
                                                 </span>
                                             </td>
@@ -178,11 +175,11 @@ export default function CustomAPIIntegrationsPage() {
                         </div>
 
                         {/* Quick Help */}
-                        <div className="bg-[#01284e] rounded-3xl p-8 text-white flex items-center overflow-hidden relative">
+                        <div className="bg-primary rounded-3xl p-8 text-white flex items-center overflow-hidden relative">
                             <div className="relative z-10 space-y-2">
-                                <h3 className="text-xl font-bold">Need to integrate a new tool?</h3>
-                                <p className="text-blue-100/70 text-sm max-w-lg">
-                                    If we don't have a direct connector for your software, you can use the API Connector to manually add the base endpoint and credentials.
+                                <h3 className="text-xl font-bold text-white">Need to integrate a new tool?</h3>
+                                <p className="text-white/70 text-sm max-w-lg">
+                                    If we don&apos;t have a direct connector for your software, you can use the API Connector to manually add the base endpoint and credentials.
                                 </p>
                             </div>
                             <Globe className="absolute right-[-40px] top-[-40px] w-64 h-64 text-white/5" />
@@ -206,7 +203,7 @@ export default function CustomAPIIntegrationsPage() {
                                         <label className="text-sm font-bold text-slate-700">Application Name</label>
                                         <input
                                             required
-                                            className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#01284e]/20 outline-none"
+                                            className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary/20 outline-none"
                                             placeholder="e.g. Mailchimp, Shopify"
                                             value={newIntegration.name}
                                             onChange={e => setNewIntegration({ ...newIntegration, name: e.target.value })}
@@ -218,7 +215,7 @@ export default function CustomAPIIntegrationsPage() {
                                             <Globe className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
                                             <input
                                                 required
-                                                className="w-full pl-11 pr-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#01284e]/20 outline-none"
+                                                className="w-full pl-11 pr-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary/20 outline-none"
                                                 placeholder="https://api.thirdparty.com/v1"
                                                 value={newIntegration.baseUrl}
                                                 onChange={e => setNewIntegration({ ...newIntegration, baseUrl: e.target.value })}
@@ -229,7 +226,7 @@ export default function CustomAPIIntegrationsPage() {
                                         <div className="space-y-2">
                                             <label className="text-sm font-bold text-slate-700">Auth Method</label>
                                             <select
-                                                className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#01284e]/20 outline-none"
+                                                className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary/20 outline-none"
                                                 value={newIntegration.authType}
                                                 onChange={e => setNewIntegration({ ...newIntegration, authType: e.target.value })}
                                             >
@@ -246,7 +243,7 @@ export default function CustomAPIIntegrationsPage() {
                                                 <input
                                                     required
                                                     type="password"
-                                                    className="w-full pl-11 pr-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#01284e]/20 outline-none"
+                                                    className="w-full pl-11 pr-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-primary/20 outline-none"
                                                     placeholder="••••••••••••"
                                                     value={newIntegration.apiKey}
                                                     onChange={e => setNewIntegration({ ...newIntegration, apiKey: e.target.value })}
@@ -258,7 +255,7 @@ export default function CustomAPIIntegrationsPage() {
                                 <button
                                     type="submit"
                                     disabled={isSaving}
-                                    className="w-full py-2.5 bg-[#01284e] text-white font-bold rounded-lg hover:bg-primary transition-colors shadow-lg shadow-blue-900/10 flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                    className="w-full py-2.5 bg-primary text-white font-bold rounded-lg hover:opacity-90 transition-colors shadow-lg shadow-primary/10 flex items-center justify-center cursor-pointer disabled:opacity-50"
                                 >
                                     {isSaving ? "Connecting..." : "Connect Application"}
                                 </button>

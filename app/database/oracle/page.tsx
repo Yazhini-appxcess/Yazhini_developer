@@ -67,11 +67,11 @@ export default function OracleDBPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-2">
                                             <label className="flex items-center text-sm font-semibold text-slate-700">
-                                                <Terminal className="w-4 h-4 mr-2 text-[#F80000]" />
+                                                <Terminal className="w-4 h-4 mr-2 text-primary" />
                                                 Host
                                             </label>
                                             <input
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#F80000]/20 focus:border-[#F80000] transition-all outline-none text-slate-800"
+                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                                 type="text"
                                                 placeholder="oracle-db.corp.intra"
                                                 value={config.host}
@@ -148,7 +148,7 @@ export default function OracleDBPage() {
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="px-10 py-3 bg-[#01284e] hover:bg-[#F80000] text-white font-bold rounded-xl shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center disabled:opacity-50"
+                                        className="px-10 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center disabled:opacity-50 hover:opacity-90"
                                     >
                                         {isSaved ? "Saved Successfully!" : isSaving ? "Establishing TNS..." : "Verify & Save Configuration"}
                                     </button>
@@ -158,7 +158,7 @@ export default function OracleDBPage() {
 
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl flex space-x-4">
-                                <Shield className="w-8 h-8 text-[#F80000] flex-shrink-0" />
+                                <Shield className="w-8 h-8 text-primary flex-shrink-0" />
                                 <div>
                                     <h4 className="font-bold text-slate-800 mb-1">Row-Level Security</h4>
                                     <p className="text-sm text-slate-600">Integrates with Oracle VPD (Virtual Private Database) to ensure AI only sees data authorized for the connection principal.</p>

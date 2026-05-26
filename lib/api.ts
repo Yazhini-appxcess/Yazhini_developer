@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
     upload: apiUrl("api/documents/upload"),
     scrapeUrl: apiUrl("api/documents/scrape-url"),
     delete: (id: number) => apiUrl(`api/documents/${id}`),
+    file: (id: number) => apiUrl(`api/documents/${id}/file`),
     query: apiUrl("api/documents/query"),
     models: apiUrl("api/documents/models"),
   },
@@ -51,6 +52,9 @@ export const API_ENDPOINTS = {
     delete: (id: string) => apiUrl(`api/conversations/${id}`),
     save: apiUrl("api/conversations/save"),
     end: apiUrl("api/conversations/end"),
+    backupList: apiUrl("api/conversations/backup/list"),
+    restore: (id: string) => apiUrl(`api/conversations/${id}/restore`),
+    permanentDelete: (id: string) => apiUrl(`api/conversations/${id}/permanent`),
   },
   admin: {
     login: apiUrl("api/admin/login"),
@@ -58,6 +62,19 @@ export const API_ENDPOINTS = {
     list: apiUrl("api/admin/list"),
     delete: (id: number) => apiUrl(`api/admin/${id}`),
     resetPassword: (id: number) => apiUrl(`api/admin/${id}/reset-password`),
+  },
+  settings: {
+    get: apiUrl("api/settings"),
+    update: apiUrl("api/settings"),
+    uploadLogo: apiUrl("api/settings/logo"),
+  },
+  // New AppXcess (Super Admin) branding endpoints
+  appxcess: {
+    settings: {
+      get: apiUrl("api/appxcess/settings"),
+      update: apiUrl("api/appxcess/settings"),
+      uploadLogo: apiUrl("api/appxcess/settings/logo"),
+    },
   },
   forms: {
     list: apiUrl("api/forms"),
@@ -73,6 +90,17 @@ export const API_ENDPOINTS = {
     devices: (agentType?: string) => apiUrl(`api/dashboard/stats/devices${agentType ? `?agent_type=${agentType}` : ''}`),
     userActivity: (period: string = "month", agentType?: string) => apiUrl(`api/dashboard/stats/user-activity?period=${period}${agentType ? `&agent_type=${agentType}` : ''}`),
     documentImportance: (limit: number = 10, agentType?: string) => apiUrl(`api/dashboard/stats/document-importance?limit=${limit}${agentType ? `&agent_type=${agentType}` : ''}`),
+    locations: (agentType?: string) => apiUrl(`api/dashboard/stats/locations${agentType ? `?agent_type=${agentType}` : ''}`),
+    tokenUsage: (period: string = "week", agentType?: string) => apiUrl(`api/dashboard/stats/token-usage?period=${period}${agentType ? `&agent_type=${agentType}` : ''}`),
+  },
+  websiteGenerator: {
+    generate: apiUrl("api/website-generator/generate"),
+    list: apiUrl("api/website-generator/list"),
+    get: (id: string) => apiUrl(`api/website-generator/${id}`),
+    redesign: (id: string) => apiUrl(`api/website-generator/redesign/${id}`),
+    edit: (id: string) => apiUrl(`api/website-generator/edit/${id}`),
+    publish: (id: string) => apiUrl(`api/website-generator/publish/${id}`),
+    landingContent: apiUrl("api/website-generator/landing-content"),
   },
 } as const;
 

@@ -64,11 +64,11 @@ export default function MongoDBPage() {
                                 <div className="p-8 space-y-8">
                                     <div className="space-y-2">
                                         <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <Terminal className="w-4 h-4 mr-2 text-[#47A248]" />
+                                            <Terminal className="w-4 h-4 mr-2 text-primary" />
                                             Connection String (SRV)
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#47A248]/20 focus:border-[#47A248] transition-all outline-none text-slate-800"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                             type="text"
                                             placeholder="mongodb+srv://user:pass@cluster0.abc.mongodb.net"
                                             value={config.connectionString}
@@ -121,7 +121,7 @@ export default function MongoDBPage() {
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="px-10 py-3 bg-[#01284e] hover:bg-[#47A248] text-white font-bold rounded-xl shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center disabled:opacity-50"
+                                        className="px-10 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center disabled:opacity-50 hover:opacity-90"
                                     >
                                         {isSaved ? "Saved Successfully!" : isSaving ? "Connecting to Cluster..." : "Verify & Save Configuration"}
                                     </button>
@@ -131,7 +131,7 @@ export default function MongoDBPage() {
 
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl flex space-x-4">
-                                <Shield className="w-8 h-8 text-[#47A248] flex-shrink-0" />
+                                <Shield className="w-8 h-8 text-primary flex-shrink-0" />
                                 <div>
                                     <h4 className="font-bold text-slate-800 mb-1">Atlas Compatible</h4>
                                     <p className="text-sm text-slate-600">Perfectly optimized for MongoDB Atlas clusters with full VPC peering support.</p>

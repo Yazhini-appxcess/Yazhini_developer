@@ -5,6 +5,7 @@ import CLSidebar from "@/components/layout/DabangSidebar";
 import CLHeader from "@/components/layout/DabangHeader";
 import { Trash2, Mail, Phone, User, Calendar, X } from "lucide-react";
 import { API_ENDPOINTS } from "@/lib/api";
+import { authFetch } from "@/lib/auth";
 
 interface FormSubmission {
   id: number;
@@ -31,14 +32,14 @@ export default function FormsPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(API_ENDPOINTS.forms.list);
+      const response = await authFetch(API_ENDPOINTS.forms.list);
       if (!response.ok) {
         throw new Error("Failed to load form submissions");
       }
       const data = await response.json();
       setSubmissions(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load form submissions");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load form submissions");
     } finally {
       setLoading(false);
     }
@@ -50,7 +51,7 @@ export default function FormsPage() {
     }
 
     try {
-      const response = await fetch(API_ENDPOINTS.forms.delete(id), {
+      const response = await authFetch(API_ENDPOINTS.forms.delete(id), {
         method: "DELETE",
       });
 
@@ -59,8 +60,8 @@ export default function FormsPage() {
       }
 
       setSubmissions(submissions.filter((s) => s.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Failed to delete submission");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete submission");
     }
   };
 

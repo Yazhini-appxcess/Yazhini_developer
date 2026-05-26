@@ -64,11 +64,11 @@ export default function SupabasePage() {
                                 <div className="p-8 space-y-8">
                                     <div className="space-y-2">
                                         <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <Zap className="w-4 h-4 mr-2 text-[#3ECF8E]" />
+                                            <Zap className="w-4 h-4 mr-2 text-primary" />
                                             Project URL
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#3ECF8E]/20 focus:border-[#3ECF8E] transition-all outline-none text-slate-800"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                             type="text"
                                             placeholder="https://your-project.supabase.co"
                                             value={config.projectUrl}
@@ -79,11 +79,11 @@ export default function SupabasePage() {
 
                                     <div className="space-y-2">
                                         <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <Key className="w-4 h-4 mr-2 text-[#3ECF8E]" />
+                                            <Key className="w-4 h-4 mr-2 text-primary" />
                                             Service Role API Key (Secret)
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#3ECF8E]/20 focus:border-[#3ECF8E] transition-all outline-none text-slate-800"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                             type="password"
                                             placeholder="eyJh..."
                                             value={config.apiKey}
@@ -95,11 +95,11 @@ export default function SupabasePage() {
 
                                     <div className="space-y-2">
                                         <label className="flex items-center text-sm font-semibold text-slate-700">
-                                            <DbIcon className="w-4 h-4 mr-2 text-[#3ECF8E]" />
+                                            <DbIcon className="w-4 h-4 mr-2 text-primary" />
                                             Direct DB Password
                                         </label>
                                         <input
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#3ECF8E]/20 focus:border-[#3ECF8E] transition-all outline-none text-slate-800"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                             type="password"
                                             placeholder="••••••••"
                                             value={config.dbPassword}
@@ -114,7 +114,7 @@ export default function SupabasePage() {
                                             id="vector"
                                             checked={config.vectorSupport}
                                             onChange={(e) => setConfig({ ...config, vectorSupport: e.target.checked })}
-                                            className="w-4 h-4 text-[#3ECF8E] focus:ring-[#3ECF8E] border-slate-300 rounded"
+                                            className="w-4 h-4 text-primary focus:ring-primary border-slate-300 rounded"
                                         />
                                         <label htmlFor="vector" className="text-sm font-medium text-slate-700">Enable pgvector indexing (Automatic)</label>
                                     </div>
@@ -124,7 +124,7 @@ export default function SupabasePage() {
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="px-10 py-3 bg-[#01284e] hover:bg-[#3ECF8E] text-white font-bold rounded-xl shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center disabled:opacity-50"
+                                        className="px-10 py-3 bg-primary hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-primary/10 transition-all flex items-center justify-center disabled:opacity-50"
                                     >
                                         {isSaved ? "Saved Successfully!" : isSaving ? "Handshaking..." : "Verify & Save Configuration"}
                                     </button>

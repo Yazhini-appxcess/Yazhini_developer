@@ -67,11 +67,11 @@ export default function PostgreSQLPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-2">
                                             <label className="flex items-center text-sm font-semibold text-slate-700">
-                                                <Terminal className="w-4 h-4 mr-2 text-[#336791]" />
+                                                <Terminal className="w-4 h-4 mr-2 text-primary" />
                                                 Host
                                             </label>
                                             <input
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#336791]/20 focus:border-[#336791] transition-all outline-none text-slate-800"
+                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none text-slate-800"
                                                 type="text"
                                                 placeholder="db.example.com"
                                                 value={config.host}
@@ -141,7 +141,7 @@ export default function PostgreSQLPage() {
                                             id="ssl"
                                             checked={config.ssl}
                                             onChange={(e) => setConfig({ ...config, ssl: e.target.checked })}
-                                            className="w-4 h-4 text-[#336791] focus:ring-[#336791] border-slate-300 rounded"
+                                            className="w-4 h-4 text-primary focus:ring-primary border-slate-300 rounded"
                                         />
                                         <label htmlFor="ssl" className="text-sm font-medium text-slate-700">Enable SSL/TLS Connection (Recommended)</label>
                                     </div>
@@ -151,7 +151,7 @@ export default function PostgreSQLPage() {
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="px-10 py-3 bg-[#01284e] hover:bg-[#336791] text-white font-bold rounded-xl shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center disabled:opacity-50"
+                                        className="px-10 py-3 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center disabled:opacity-50 hover:opacity-90"
                                     >
                                         {isSaved ? "Saved Successfully!" : isSaving ? "Testing Connection..." : "Verify & Save Configuration"}
                                     </button>
@@ -161,7 +161,7 @@ export default function PostgreSQLPage() {
 
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-2xl flex space-x-4">
-                                <Shield className="w-8 h-8 text-[#336791] flex-shrink-0" />
+                                <Shield className="w-8 h-8 text-primary flex-shrink-0" />
                                 <div>
                                     <h4 className="font-bold text-slate-800 mb-1">Encrypted Access</h4>
                                     <p className="text-sm text-slate-600">PostgreSQL connections are secured with AES-256 encryption during data transit.</p>
