@@ -250,7 +250,8 @@ async def upload_document(
 
 @router.get("", response_model=List[DocumentResponse])
 async def list_documents(
-    db: Annotated[AsyncSession, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = Depends(get_current_admin)
 ):
     """List all uploaded documents"""
     result = await db.execute(
@@ -338,7 +339,8 @@ async def delete_document(
 @router.post("/query", response_model=QueryResponse)
 async def query_documents(
     request: QueryRequest,
-    db: Annotated[AsyncSession, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: User = Depends(get_current_admin)
 ):
     """Query documents using RAG (Retrieval Augmented Generation)"""
     # Generate query embedding
@@ -662,7 +664,9 @@ async def get_document_file(
 
 
 @router.get("/models")
-async def list_available_models():
+async def list_available_models(
+    current_user: User = Depends(get_current_admin)
+):
     """List available LLM models"""
     return {
         "models": [

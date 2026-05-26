@@ -7,6 +7,8 @@ from loguru import logger
 from app.core.database import get_db
 from app.models.form_submission import FormSubmission
 from app.schema.form_submission import FormSubmissionRequest, FormSubmissionResponse
+from app.core.auth import get_current_admin
+from app.models.user import User
 
 router = APIRouter(prefix="/api/forms", tags=["forms"])
 
@@ -61,7 +63,8 @@ async def submit_form(
 async def get_form_submissions(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get all form submissions."""
     try:
@@ -84,7 +87,8 @@ async def get_form_submissions(
 @router.delete("/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_form_submission(
     submission_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Delete a form submission."""
     try:

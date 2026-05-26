@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from app.models.integration import IntegrationService
-from app.router.master import get_current_master
+from app.router.appxcess import get_current_appxcess
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
@@ -50,12 +50,12 @@ async def get_integrations(
     result = await db.execute(query)
     return result.scalars().all()
 
-# Master Only Endpoints
+# AppXcess Only Endpoints
 @router.post("", response_model=IntegrationResponse)
 async def create_integration(
     integration: IntegrationCreate,
     db: AsyncSession = Depends(get_db),
-    current_master: str = Depends(get_current_master)
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
     db_integration = IntegrationService(**integration.dict())
     db.add(db_integration)
@@ -68,7 +68,7 @@ async def update_integration(
     id: int,
     integration: IntegrationUpdate,
     db: AsyncSession = Depends(get_db),
-    current_master: str = Depends(get_current_master)
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
     result = await db.execute(select(IntegrationService).where(IntegrationService.id == id))
     db_integration = result.scalar_one_or_none()
@@ -88,7 +88,7 @@ async def update_integration(
 async def delete_integration(
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_master: str = Depends(get_current_master)
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
     result = await db.execute(select(IntegrationService).where(IntegrationService.id == id))
     db_integration = result.scalar_one_or_none()

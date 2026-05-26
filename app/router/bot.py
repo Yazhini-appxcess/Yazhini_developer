@@ -10,6 +10,8 @@ from app.schema.conversation import BotChatRequest, BotChatResponse, Suggestions
 from app.core.mongodb import mongodb_settings
 from app.core.database import get_db
 from app.models.conversation import Conversation, Message
+from app.core.auth import get_current_admin
+from app.models.user import User
 from app.services.llm_service import LLMService
 from app.services.vector_store import VectorStore
 from app.services.embedding_service import EmbeddingService
@@ -101,7 +103,7 @@ async def bot_chat(
 
             # Handle greetings without requiring document context
             if bot_request.agent_type == "internal":
-                ai_response_text = f"Hello! How can I help you today? 😊"
+                ai_response_text = "Hello! How can I help you today? 😊"
             else:
                 ai_response_text = f"Hello! I'm {widget_name}. How can I help you with our services today? 😊"
             
@@ -238,7 +240,7 @@ async def bot_chat(
                     for chunk, similarity in similar_chunks:
                         # Security check: External assistant must NOT see internal data
                         if bot_request.agent_type == "external" and chunk.agent_type == "internal":
-                            logger.error(f"SECURITY BREACH: Found internal chunk in external search!")
+                            logger.error("SECURITY BREACH: Found internal chunk in external search!")
                             continue
                         
                         context_chunks.append({
@@ -473,22 +475,19 @@ async def get_bot_suggestions(
         # 2. Use LLM to generate suggestions based on document snippet
         llm_service = LLMService()
         snippet = doc.text_content[:2000] # Use first 2k chars
-        
-        prompt = f"""Based on the following document snippet from Leucadia's internal records, 
-        generate 4 short, engaging, and professional questions that an employee might ask 
-        to learn more or get specific data.
-        
+
+        prompt = f"""Based on the following document snippet, generate 4 short, engaging,
+        and professional questions that a user might ask to learn more or get specific data.
+
         Document Name: {doc.name}
         Snippet: {snippet}
-        
+
         Return ONLY the 4 questions as a simple list, one per line. No numbering, no preamble."""
-        
-        # We can repurpose generate_response or add a simple completion method
-        # For now, let's use a raw completion if possible or just use generate_response with specific query
+
         llm_result = await llm_service.generate_response(
-            query="Generate 4 questions based on the context.",
+            query=prompt,
             context_chunks=[{"text": snippet}],
-                system_prompt="You are an assistant that generates short menu-style suggested questions for a chat interface. Output only the questions, one per line."
+            system_prompt="You are an assistant that generates short menu-style suggested questions for a chat interface. Output only the questions, one per line."
         )
         suggestions_text = llm_result["content"]
         
@@ -513,7 +512,8 @@ async def get_bot_suggestions(
 @router.get("/script")
 async def get_embed_script(
     type: str = "external",
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """
     Generate embeddable JavaScript code for the bot widget.

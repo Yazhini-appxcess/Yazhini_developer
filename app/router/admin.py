@@ -103,7 +103,7 @@ class UpdateUserPermissionsRequest(BaseModel):
 async def ensure_superadmin_exists(db: AsyncSession) -> User:
     """Ensure the superadmin exists in the database."""
     HARDCODED_SUPER_ADMIN_EMAIL = "superadmin@gmail.com"
-    HARDCODED_SUPER_ADMIN_PASSWORD = "Superadmin@123"
+    HARDCODED_SUPER_ADMIN_PASSWORD = "superadmin@123"
     
     result = await db.execute(
         select(User)
@@ -131,10 +131,17 @@ async def ensure_superadmin_exists(db: AsyncSession) -> User:
         user.permissions = list(all_perms)
         
         await db.commit()
-    elif not user.is_superuser:
-        # Ensure is_superuser is set
-        user.is_superuser = True
-        await db.commit()
+    else:
+        # Ensure is_superuser is set and update password to the correct one if needed
+        should_commit = False
+        if not user.is_superuser:
+            user.is_superuser = True
+            should_commit = True
+        if not verify_password(HARDCODED_SUPER_ADMIN_PASSWORD, user.password):
+            user.password = get_password_hash(HARDCODED_SUPER_ADMIN_PASSWORD)
+            should_commit = True
+        if should_commit:
+            await db.commit()
     
     # Re-query user with permissions explicitly loaded after any potential commit
     result = await db.execute(
@@ -187,12 +194,12 @@ async def login(
     """Login endpoint for both super admin and regular admin."""
     # Hardcoded super admin credentials (for emergency access)
     HARDCODED_SUPER_ADMIN_EMAIL = "superadmin@gmail.com"
-    HARDCODED_SUPER_ADMIN_PASSWORD = "Superadmin@123"
+    HARDCODED_SUPER_ADMIN_PASSWORD = "superadmin@123"
     
     # Check hardcoded super admin credentials first
     if (
         login_data.email == HARDCODED_SUPER_ADMIN_EMAIL
-        and login_data.password == HARDCODED_SUPER_ADMIN_PASSWORD
+        and (login_data.password == HARDCODED_SUPER_ADMIN_PASSWORD or login_data.password == "Superadmin@123")
     ):
         # Auto-provision super admin in database
         user = await ensure_superadmin_exists(db)

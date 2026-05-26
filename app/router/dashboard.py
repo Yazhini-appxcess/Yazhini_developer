@@ -14,6 +14,8 @@ from app.core.mongodb import mongodb_settings
 from app.core.settings import Settings
 from app.models.document import Document, DocumentChunk
 from app.models.form_submission import FormSubmission
+from app.core.auth import get_current_admin
+from app.models.user import User
 
 _settings = Settings()
 LA_TZ = ZoneInfo(_settings.timezone)
@@ -70,7 +72,8 @@ def parse_user_agent(user_agent: Optional[str]) -> dict:
 @router.get("/stats/today")
 async def get_today_stats(
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get today's activity statistics and total counts."""
     try:
@@ -244,7 +247,8 @@ async def get_today_stats(
 async def get_activity_stats(
     period: str = Query("week", regex="^(day|week|month)$"),
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get activity statistics (questions vs documents) over time."""
     try:
@@ -412,7 +416,8 @@ async def get_activity_stats(
 async def get_visitor_stats(
     period: str = Query("month", regex="^(day|week|month|year)$"),
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get visitor insights over time."""
     try:
@@ -578,7 +583,8 @@ async def get_visitor_stats(
 @router.get("/stats/top-documents")
 async def get_top_documents(
     limit: int = Query(10, ge=1, le=50),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get top documents by usage (most chunks used in queries)."""
     try:
@@ -615,7 +621,8 @@ async def get_top_documents(
 @router.get("/stats/document-importance")
 async def get_document_importance(
     limit: int = Query(10, ge=1, le=20),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get document importance metrics based on actual usage in queries."""
     try:
@@ -697,7 +704,8 @@ async def get_document_importance(
 async def get_top_websites(
     limit: int = Query(10, ge=1, le=50),
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get top websites by conversation count."""
     try:
@@ -763,7 +771,8 @@ async def get_top_websites(
 @router.get("/stats/devices")
 async def get_device_stats(
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get device and browser statistics."""
     try:
@@ -832,7 +841,8 @@ async def get_device_stats(
 async def get_user_activity_stats(
     period: str = Query("month", regex="^(week|month|year)$"),
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get user activity statistics over time."""
     try:
@@ -892,6 +902,7 @@ async def get_user_activity_stats(
                 sessions_by_month[month_key].add(session_id)
         
         # Get documents by month
+        doc_month_expr = func.date_trunc('month', Document.created_at)
         doc_query = select(
             func.to_char(doc_month_expr, "YYYY-MM").label("month"),
             func.count(Document.id).label("count")
@@ -900,7 +911,7 @@ async def get_user_activity_stats(
         )
         if agent_type:
             doc_query = doc_query.where(Document.agent_type == agent_type)
-            
+
         doc_query = doc_query.group_by(doc_month_expr).order_by(doc_month_expr)
         
         result = await db.execute(doc_query)
@@ -947,7 +958,8 @@ async def get_user_activity_stats(
 @router.get("/stats/locations")
 async def get_traffic_by_location(
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get traffic by location (mocked for now as we don't have GeoIP)."""
     try:
@@ -973,6 +985,7 @@ async def get_traffic_by_location(
 async def get_token_usage_stats(
     period: str = Query("week", regex="^(day|week|month|year)$"),
     agent_type: Optional[str] = Query(None, regex="^(all|internal|external)$"),
+    current_user: User = Depends(get_current_admin)
 ):
     """Get token usage statistics over time."""
     try:

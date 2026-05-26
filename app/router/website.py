@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.models.website import WebsiteConfig
 from app.schemas.website import WebsiteConfigResponse, WebsiteConfigUpdate, WebsiteConfigCreate
+from app.router.appxcess import get_current_appxcess
 
 router = APIRouter(
     prefix="/api/website",
@@ -24,7 +25,11 @@ async def get_website_config(db: AsyncSession = Depends(get_db)):
     return config
 
 @router.put("/config", response_model=WebsiteConfigResponse)
-async def update_website_config(config_data: WebsiteConfigUpdate, db: AsyncSession = Depends(get_db)):
+async def update_website_config(
+    config_data: WebsiteConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_appxcess: str = Depends(get_current_appxcess)
+):
     result = await db.execute(select(WebsiteConfig))
     config = result.scalars().first()
     

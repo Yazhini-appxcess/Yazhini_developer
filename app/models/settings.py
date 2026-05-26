@@ -10,6 +10,10 @@ class OrganizationSettings(Base):
     company_name: Mapped[str] = mapped_column(String(100), default="Default Company")
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     favicon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Super Admin (AppXcess) branding — kept separate from tenant/General Admin branding
+    appxcess_logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    appxcess_favicon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     primary_color: Mapped[str] = mapped_column(String(20), default="#0f172a")  # Default Slate-900
     sidebar_bg_color: Mapped[str] = mapped_column(String(20), default="#ffffff")
     sidebar_text_color: Mapped[str] = mapped_column(String(20), default="#0f172a")

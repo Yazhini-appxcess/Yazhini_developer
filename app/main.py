@@ -17,7 +17,7 @@ from app.router.dashboard import router as dashboard_router
 from app.router.admin import router as admin_router
 from app.router.ai_config import router as ai_config_router
 from app.router.settings import router as settings_router
-from app.router.master import router as master_router
+from app.router.appxcess import router as appxcess_router
 from app.router import integrations
 from app.router.website import router as website_router
 from app.router.website_generator import router as website_generator_router
@@ -54,7 +54,7 @@ app.include_router(admin_router)
 app.include_router(conversation_router)
 app.include_router(bot_router)
 app.include_router(settings_router)
-app.include_router(master_router)
+app.include_router(appxcess_router)
 app.include_router(ai_config_router)
 app.include_router(form_router)
 app.include_router(widget_router)

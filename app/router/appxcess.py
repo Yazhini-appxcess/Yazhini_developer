@@ -1,4 +1,4 @@
-"""Router for Master Dashboard (System Owner)."""
+"""Router for AppXcess Dashboard (System Owner)."""
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -20,18 +20,18 @@ from app.core.auth import (
 from app.core.database import get_db
 from app.models.settings import OrganizationSettings
 
-router = APIRouter(prefix="/api/master", tags=["master"])
+router = APIRouter(prefix="/api/appxcess", tags=["appxcess"])
 security = HTTPBearer()
 
-# Hardcoded Master Credentials (isolated from DB)
-MASTER_EMAIL = "master@leucadia.com"
-MASTER_PASSWORD_HASH = get_password_hash("MasterAccess2026!")
+# Hardcoded AppXcess Credentials (isolated from DB)
+APPXCESS_EMAIL = "superadmin@appxcess.com"
+APPXCESS_PASSWORD_HASH = get_password_hash("Admin@123")
 
-class MasterLoginRequest(BaseModel):
+class AppXcessLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-class MasterLoginResponse(BaseModel):
+class AppXcessLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
@@ -66,13 +66,13 @@ class SettingsUpdate(BaseModel):
     widget_primary_color: Optional[str] = None
     widget_logo_url: Optional[str] = None
 
-async def get_current_master(
+async def get_current_appxcess(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Dependency to verify Master token."""
+    """Dependency to verify AppXcess token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate master credentials",
+        detail="Could not validate AppXcess credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -80,7 +80,7 @@ async def get_current_master(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         # Check against hardcoded email
-        if email != MASTER_EMAIL:
+        if email.lower() != APPXCESS_EMAIL.lower():
             raise credentials_exception
         return email
     except JWTError:
@@ -90,51 +90,100 @@ async def get_or_create_settings(db: AsyncSession) -> OrganizationSettings:
     """Helper to get or create settings (replicated for isolation)."""
     result = await db.execute(select(OrganizationSettings).limit(1))
     settings = result.scalar_one_or_none()
-    
+
     if not settings:
         settings = OrganizationSettings()
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
-    
+
     return settings
 
-@router.post("/login", response_model=MasterLoginResponse)
-async def master_login(login_data: MasterLoginRequest):
-    """Login for Master Dashboard."""
+
+def _settings_to_dict(settings: OrganizationSettings) -> dict:
+    """Serialize an OrganizationSettings row to the response shape used by both
+    /api/settings and /api/appxcess/settings. The Brand Identity page in the
+    Super Admin Portal edits the tenant (General Admin) branding, so both
+    endpoints return the same logo_url / favicon_url. updated_at is included so
+    the frontend can build a cache-busting query string."""
+    return {
+        "company_name": settings.company_name,
+        "logo_url": settings.logo_url,
+        "favicon_url": settings.favicon_url,
+        "primary_color": settings.primary_color,
+        "sidebar_bg_color": settings.sidebar_bg_color,
+        "sidebar_text_color": settings.sidebar_text_color,
+        "sidebar_enabled": settings.sidebar_enabled,
+        "custom_sections": settings.custom_sections,
+        "integration_label": settings.integration_label,
+        "custom_links_label": settings.custom_links_label,
+        "widget_name": settings.widget_name,
+        "widget_logo_url": settings.widget_logo_url,
+        "widget_primary_color": settings.widget_primary_color,
+        "show_dashboard": settings.show_dashboard,
+        "show_copilot": settings.show_copilot,
+        "show_upload_hub": settings.show_upload_hub,
+        "show_documents": settings.show_documents,
+        "show_conversations": settings.show_conversations,
+        "show_admin_management": settings.show_admin_management,
+        "show_activity_log": settings.show_activity_log,
+        "show_erp_hub": settings.show_erp_hub,
+        "show_crm_hub": settings.show_crm_hub,
+        "show_database_hub": settings.show_database_hub,
+        "show_api_docs": settings.show_api_docs,
+        "show_iot_hub": settings.show_iot_hub,
+        "show_microsoft_hub": settings.show_microsoft_hub,
+        "show_mes_hub": settings.show_mes_hub,
+        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+    }
+
+
+@router.get("/settings")
+async def get_appxcess_settings(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return the tenant (General Admin) branding so the Super Admin's Brand
+    Identity page can populate its form. The Super Admin Portal itself uses
+    a static favicon — that is not served from this endpoint."""
+    settings = await get_or_create_settings(db)
+    return _settings_to_dict(settings)
+
+@router.post("/login", response_model=AppXcessLoginResponse)
+async def appxcess_login(login_data: AppXcessLoginRequest):
+    """Login for AppXcess Dashboard."""
     # Verify Email
-    if login_data.email != MASTER_EMAIL:
+    if login_data.email.lower() != APPXCESS_EMAIL.lower():
          raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect master credentials",
+            detail="Incorrect AppXcess credentials",
         )
     
     # Verify Password
-    if login_data.password != "MasterAccess2026!":
+    if login_data.password not in ["Admin@123", "admin@123"]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect master credentials",
+            detail="Incorrect AppXcess credentials",
         )
 
     # Create Token
-    access_token = create_access_token(data={"sub": MASTER_EMAIL, "role": "master"})
-    return MasterLoginResponse(access_token=access_token)
+    access_token = create_access_token(data={"sub": APPXCESS_EMAIL, "role": "appxcess"})
+    return AppXcessLoginResponse(access_token=access_token)
 
 @router.get("/verify")
-async def verify_master_token(
-    current_master: str = Depends(get_current_master)
+async def verify_appxcess_token(
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
-    """Verify validity of master token."""
-    return {"status": "valid", "user": current_master}
+    """Verify validity of AppXcess token."""
+    return {"status": "valid", "user": current_appxcess}
 
 
 @router.put("/settings")
-async def update_master_settings(
+async def update_appxcess_settings(
     settings_in: SettingsUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_master: str = Depends(get_current_master)
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
-    """Update organization settings via Master Dashboard."""
+    """Update organization settings via AppXcess Dashboard."""
     settings = await get_or_create_settings(db)
     
     if settings_in.company_name is not None:
@@ -171,41 +220,58 @@ async def update_master_settings(
         
     await db.commit()
     await db.refresh(settings)
-    return settings
+    return _settings_to_dict(settings)
 
 @router.post("/upload")
-async def upload_master_asset(
+async def upload_appxcess_asset(
     db: Annotated[AsyncSession, Depends(get_db)],
     file: UploadFile = File(...),
-    type: str = Form(...), # 'logo' or 'favicon'
-    current_master: str = Depends(get_current_master)
+    type: str = Form(...), # 'logo' or 'favicon' or 'widget_logo'
+    current_appxcess: str = Depends(get_current_appxcess)
 ):
-    """Upload logo or favicon via Master Dashboard."""
+    """Upload tenant logo/favicon from the Super Admin Brand Identity page.
+    Writes to the General Admin columns (logo_url, favicon_url) so the change
+    propagates to /api/settings and the tenant portal picks it up on next load."""
     settings = await get_or_create_settings(db)
-    
-    # Save file
+
+    # Validate favicon MIME type
+    if type == "favicon":
+        allowed_types = {"image/png", "image/x-icon", "image/vnd.microsoft.icon", "image/svg+xml"}
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Favicon must be image/png, image/x-icon, or image/svg+xml"
+            )
+
     upload_dir = Path("data/uploads/branding")
     upload_dir.mkdir(parents=True, exist_ok=True)
-    
+
     file_ext = os.path.splitext(file.filename)[1]
     filename = f"{type}_{int(settings.id)}{file_ext}"
     file_path = upload_dir / filename
-    
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
+
+    # Verify storage file presence
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save uploaded file to storage"
+        )
+
     file_url = f"/static/branding/{filename}"
-    
+
     if type == "logo":
         settings.logo_url = file_url
     elif type == "favicon":
         settings.favicon_url = file_url
     elif type == "widget_logo":
         settings.widget_logo_url = file_url
-        
+
     await db.commit()
     await db.refresh(settings)
-    return settings
+    return _settings_to_dict(settings)
 
 # AI Config Management
 from app.models.ai_config import AIConfig
@@ -214,7 +280,7 @@ from app.schema.ai_config import AIConfigListResponse, AIConfigUpdate, AIConfigS
 @router.get("/ai-config", response_model=AIConfigListResponse)
 async def get_ai_configs(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: str = Depends(get_current_master)
+    current_user: str = Depends(get_current_appxcess)
 ):
     """Get all AI configurations."""
     result = await db.execute(select(AIConfig))
@@ -225,7 +291,7 @@ async def get_ai_configs(
 async def update_ai_config(
     config_data: AIConfigCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: str = Depends(get_current_master)
+    current_user: str = Depends(get_current_appxcess)
 ):
     """Update or create AI configuration."""
     # Check if config exists for this agent type

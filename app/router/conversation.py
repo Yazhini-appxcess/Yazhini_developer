@@ -89,7 +89,8 @@ async def list_conversations(
     limit: int = Query(50, ge=1, le=100),
     website_url: Optional[str] = None,
     agent_type: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     """List all conversations."""
     try:
@@ -169,7 +170,11 @@ async def list_conversations(
 
 
 @router.get("/{conversation_id}", response_model=ConversationSchema)
-async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_db)):
+async def get_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
     """Get a specific conversation by ID."""
     try:
         db_mongo = mongodb_settings.get_database()

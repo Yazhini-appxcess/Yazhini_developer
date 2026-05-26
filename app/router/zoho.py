@@ -6,13 +6,13 @@ from app.models.zoho_config import ZohoConfig
 from pydantic import BaseModel
 from typing import Optional
 
-from app.core.encryption import encrypt_value
-
 from app.core.encryption import encrypt_value, decrypt_value
 import httpx
 from starlette.responses import RedirectResponse
 import os
 from app.core.settings import settings
+from app.core.auth import get_current_admin
+from app.models.user import User
 
 router = APIRouter(prefix="/api/zoho", tags=["zoho"])
 
@@ -25,7 +25,8 @@ class ZohoConfigUpdate(BaseModel):
 @router.post("/config")
 async def save_zoho_config(
     config: ZohoConfigUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
 ):
     # Encrypt secret before storage
     encrypted_secret = encrypt_value(config.client_secret)
@@ -51,7 +52,10 @@ async def save_zoho_config(
     return {"message": "Zoho configuration saved successfully. Now please authorize."}
 
 @router.get("/authorize")
-async def authorize_zoho(db: AsyncSession = Depends(get_db)):
+async def authorize_zoho(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
     result = await db.execute(select(ZohoConfig).limit(1))
     config = result.scalar_one_or_none()
     if not config:
@@ -104,7 +108,10 @@ async def zoho_callback(code: str, db: AsyncSession = Depends(get_db)):
             return {"error": "Failed to get refresh token", "details": data}
 
 @router.get("/config")
-async def get_zoho_config(db: AsyncSession = Depends(get_db)):
+async def get_zoho_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
     result = await db.execute(select(ZohoConfig).limit(1))
     config = result.scalar_one_or_none()
     if not config:

@@ -108,11 +108,11 @@ async def verify_token(token: str, db: AsyncSession) -> User:
         print(f"DEBUG AUTH: User found in DB: {user.email}") # DEBUG LOG
         return user
 
-    # 2. Fallback: Check if it's the hardcoded superadmin or master
+    # 2. Fallback: Check if it's the hardcoded superadmin or appxcess
     HARDCODED_SUPER_ADMIN_EMAIL = "superadmin@gmail.com"
-    HARDCODED_MASTER_EMAIL = "master@leucadia.com"
+    HARDCODED_APPXCESS_EMAIL = "superadmin@appxcess.com"
     
-    # logger.info(f"DEBUG AUTH: Checking hardcoded: {email} against {HARDCODED_SUPER_ADMIN_EMAIL} and {HARDCODED_MASTER_EMAIL}") # DEBUG LOG
+    # logger.info(f"DEBUG AUTH: Checking hardcoded: {email} against {HARDCODED_SUPER_ADMIN_EMAIL} and {HARDCODED_APPXCESS_EMAIL}") # DEBUG LOG
 
     if email == HARDCODED_SUPER_ADMIN_EMAIL:
         # Create a mock User object for hardcoded super admin
@@ -129,21 +129,21 @@ async def verify_token(token: str, db: AsyncSession) -> User:
         )
         return hardcoded_admin
 
-    if email == HARDCODED_MASTER_EMAIL:
-        # Create a mock User object for hardcoded master
-        # logger.info("DEBUG AUTH: MATCHED master email") # DEBUG LOG
-        hardcoded_master = User(
+    if email == HARDCODED_APPXCESS_EMAIL:
+        # Create a mock User object for hardcoded appxcess
+        # logger.info("DEBUG AUTH: MATCHED appxcess email") # DEBUG LOG
+        hardcoded_appxcess = User(
             id=1, # Distinct ID from superadmin
-            email=HARDCODED_MASTER_EMAIL,
-            username="master",
-            slug="master",
-            first_name="Master",
+            email=HARDCODED_APPXCESS_EMAIL,
+            username="appxcess",
+            slug="appxcess",
+            first_name="AppXcess",
             last_name="Account",
             password="",
             is_superuser=True,
             permissions=[],
         )
-        return hardcoded_master
+        return hardcoded_appxcess
     
     # If neither found
     # logger.info("DEBUG AUTH: No user found, raising 401") # DEBUG LOG
@@ -163,7 +163,12 @@ async def get_current_admin(
 ) -> User:
     """Get the current authenticated admin (super admin or regular admin)."""
     # Both super admin and regular admin can access
-    # Regular admin has is_superuser=False, super admin has is_superuser=True
+    # Regular admin has user_type="admin" and is_superuser=False, super admin has is_superuser=True
+    if not (current_user.is_superuser or current_user.user_type == "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
     return current_user
 
 
