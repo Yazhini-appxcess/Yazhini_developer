@@ -11,7 +11,7 @@ import {
     HelpCircle,
     Shield
 } from "lucide-react";
-
+/*default fun*/
 export default function UsageContent() {
     const [activeTab, setActiveTab] = useState<"openai" | "aws" | "examples">("openai");
 
