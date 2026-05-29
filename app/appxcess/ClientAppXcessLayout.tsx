@@ -18,20 +18,27 @@ export default function ClientAppXcessLayout({
     // which the Brand Identity page edits and ThemeContext renders for General
     // Admin routes.
     useEffect(() => {
-        if (typeof document !== "undefined") {
+        if (typeof document !== "undefined" && pathname !== "/appxcess/backup") {
             document.title = "Super Admin Portal";
 
             const iconUrl = "/super_admin_favicon.png";
-            let link = document.querySelector("link[rel='icon']");
-            if (!link) {
-                link = document.createElement("link");
-                link.setAttribute("rel", "icon");
-                if (document.head) {
-                    document.head.appendChild(link);
-                }
-            }
-            if (link) {
-                (link as HTMLLinkElement).href = `${iconUrl}?v=${Date.now()}`;
+            const cacheBustedUrl = `${iconUrl}?v=${Date.now()}`;
+
+            const existingLinks = document.querySelectorAll("link[rel*='icon']");
+            if (existingLinks.length > 0) {
+                existingLinks.forEach(link => {
+                    (link as HTMLLinkElement).href = cacheBustedUrl;
+                });
+            } else {
+                const newLink = document.createElement("link");
+                newLink.setAttribute("rel", "icon");
+                newLink.href = cacheBustedUrl;
+                document.head?.appendChild(newLink);
+
+                const appleLink = document.createElement("link");
+                appleLink.setAttribute("rel", "apple-touch-icon");
+                appleLink.href = cacheBustedUrl;
+                document.head?.appendChild(appleLink);
             }
         }
     }, [pathname]);

@@ -116,6 +116,7 @@ export default function AIChatInterface({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationViewRef = useRef<HTMLDivElement>(null);
+  const isInitialMount = useRef(true);
 
   // Chat widget branding from Super Admin Widget Config. Read on every render
   // so updates propagate as soon as ThemeContext setState lands.
@@ -159,15 +160,31 @@ export default function AIChatInterface({
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    if (conversationViewRef.current) {
+      conversationViewRef.current.scrollTo({
+        top: conversationViewRef.current.scrollHeight,
+        behavior,
+      });
+    }
   };
 
   useEffect(() => {
-    if (view === "chat") {
-      scrollToBottom();
+    if (view === "chat" && (messages.length > 0 || loading)) {
+      if (isInitialMount.current) {
+        scrollToBottom("auto");
+        isInitialMount.current = false;
+      } else {
+        scrollToBottom("smooth");
+      }
     }
-  }, [messages, view, loading]);
+  }, [messages, loading]);
+
+  useEffect(() => {
+    if (view !== "chat") {
+      isInitialMount.current = true;
+    }
+  }, [view]);
 
   const loadConversations = async () => {
     if (!sessionId) return;
@@ -586,7 +603,7 @@ export default function AIChatInterface({
                         className={`rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed ${msg.role === 'user'
                           ? 'text-white rounded-br-md'
                           : 'bg-white text-gray-800 border border-gray-100 rounded-bl-md'
-                        }`}
+                          }`}
                         style={msg.role === 'user' ? { background: widgetColor } : undefined}
                       >
                         <div dangerouslySetInnerHTML={{ __html: msg.isHtml ? msg.content : formatMessage(msg.content) }} />

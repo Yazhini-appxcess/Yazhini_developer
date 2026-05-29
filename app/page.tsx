@@ -203,13 +203,20 @@ export default function Home() {
     return "File";
   };
 
+  interface TooltipPayloadItem {
+    color?: string;
+    fill?: string;
+    name?: string;
+    value: number | string;
+  }
+
   // Recharts Custom Dark Glass Tooltip with micro-glows
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadItem[]; label?: string }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-slate-950/90 backdrop-blur-md p-3.5 border border-white/10 rounded-2xl shadow-2xl text-left text-xs text-white animate-scale-in">
           <p className="text-slate-400 font-mono text-[9px] mb-1.5 uppercase tracking-wider">{label}</p>
-          {payload.map((p: any, idx: number) => (
+          {payload.map((p, idx: number) => (
             <div key={idx} className="flex items-center gap-3 mt-1.5">
               <span className="w-2 h-2 rounded-full shadow-[0_0_8px]" style={{ backgroundColor: p.color || p.fill, boxShadow: `0 0 8px ${p.color || p.fill}` }} />
               <span className="text-slate-300 font-medium">{p.name}:</span>

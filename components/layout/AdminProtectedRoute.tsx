@@ -18,9 +18,9 @@ export default function AdminProtectedRoute({ children }: { children: React.Reac
         const verifyAuth = async () => {
             // Check if current route is public
             const isPublic = publicRoutes.includes(pathname);
-            
-            // Check if Control Plane (AppXcess) route
-            const isAppXcess = pathname.startsWith("/appxcess");
+
+            // Check if Control Plane (AppXcess) route (excluding backup which is a general superadmin feature)
+            const isAppXcess = pathname.startsWith("/appxcess") && !pathname.startsWith("/appxcess/backup");
 
             if (isPublic) {
                 setChecking(false);
@@ -34,7 +34,7 @@ export default function AdminProtectedRoute({ children }: { children: React.Reac
                     router.replace("/appxcess/login");
                     return;
                 }
-                
+
                 // Validate appxcess token against backend API
                 const isValid = await checkAppXcessAuthStatus();
                 if (!isValid) {
@@ -77,7 +77,7 @@ export default function AdminProtectedRoute({ children }: { children: React.Reac
     }, [pathname, router]);
 
     if (checking) {
-        const isAppXcess = pathname.startsWith("/appxcess") || pathname.startsWith("/super-admin");
+        const isAppXcess = (pathname.startsWith("/appxcess") && !pathname.startsWith("/appxcess/backup")) || pathname.startsWith("/super-admin");
         return (
             <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white">
                 <div className="flex flex-col items-center gap-6">

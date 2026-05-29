@@ -29,6 +29,7 @@ export function removeAuthToken(): void {
   localStorage.removeItem("admin_token");
   localStorage.removeItem("admin_user");
   localStorage.removeItem("appxcess_token");
+  sessionStorage.clear();
 }
 
 export function getAdminUser(): AdminUser | null {

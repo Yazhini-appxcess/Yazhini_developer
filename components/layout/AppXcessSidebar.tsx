@@ -2,6 +2,7 @@
 
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { removeAuthToken } from "@/lib/auth";
 import {
     Palette,
     PanelLeft,
@@ -47,7 +48,7 @@ export default function AppXcessSidebar() {
     const router = useRouter();
 
     const handleLogout = () => {
-        localStorage.removeItem("appxcess_token");
+        removeAuthToken();
         router.push("/appxcess/login");
     };
 

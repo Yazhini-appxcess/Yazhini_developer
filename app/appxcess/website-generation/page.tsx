@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import AppXcessSidebar from "@/components/layout/AppXcessSidebar";
-import { Webhook, Globe, Layout, Search, Download, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import {
+    Globe, Layout, Search, Download, Loader2, CheckCircle2,
+    AlertCircle, Sparkles, Trash2, CheckSquare, Square, MinusSquare,
+    X, ChevronLeft, ChevronRight, Clock, ExternalLink, Zap
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { API_ENDPOINTS } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -22,6 +27,21 @@ interface GeneratedSite {
     redesigned_at?: string;
 }
 
+/** Lightweight shape returned by the optimised list endpoint. */
+interface SiteListItem {
+    id: string;
+    source_url: string;
+    created_at: string;
+    status: string; // "processing" | "completed" | "failed"
+    generation_type: string; // "capture" | "redesign"
+    has_html?: boolean;
+    has_redesigned_html?: boolean;
+    generated_html_size?: number;
+    redesigned_html_size?: number;
+    redesigned_at?: string;
+    is_active: boolean;
+}
+
 // Website Generation is gated by a separate feature flag from the Website Module.
 // Currently ENABLED. To disable, flip the flag to false — the wrapper will
 // render a redirect stub instead, leaving the full implementation untouched
@@ -36,26 +56,55 @@ export default function TestSitePage() {
         }
     }, [router]);
     if (!ENABLE_WEBSITE_GENERATION) return null;
-    return <_TestSitePageImpl />;
+    return <TestSitePageImpl />;
 }
 
-function _TestSitePageImpl() {
+function TestSitePageImpl() {
     const router = useRouter();
     const [url, setUrl] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
     const [step, setStep] = useState<"idle" | "scraping" | "analyzing" | "generating" | "complete" | "error">("idle");
     const [result, setResult] = useState<GeneratedSite | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [pastSites, setPastSites] = useState<GeneratedSite[]>([]);
+    const [pastSites, setPastSites] = useState<SiteListItem[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
     // Step 3: Editing State
     const [editInstructions, setEditInstructions] = useState("");
     const [isEditing, setIsEditing] = useState(false);
 
+    // ─── History Section State ───────────────────────────────────────────
+    const [historySearch, setHistorySearch] = useState("");
+    const [historyTypeFilter, setHistoryTypeFilter] = useState<"all" | "capture" | "redesign">("all");
+    const [historyStatusFilter, setHistoryStatusFilter] = useState<"all" | "completed" | "processing" | "failed">("all");
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [togglingActiveId, setTogglingActiveId] = useState<string | null>(null);
+    const [historyPage, setHistoryPage] = useState(1);
+    const HISTORY_PER_PAGE = 10;
+
+    // Toast notification state
+    const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+    const showToast = (message: string, type: "success" | "error" = "success") => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+    };
+
+    const getErrorMessage = async (response: Response, fallback: string) => {
+        const errorData = await response.json().catch((): { detail?: string; message?: string } => ({}));
+        return errorData.detail || errorData.message || `${fallback} (${response.status})`;
+    };
+
     useEffect(() => {
         loadHistory();
     }, []);
+
+    // Reset selection on filter change
+    useEffect(() => {
+        setSelectedIds(new Set());
+        setHistoryPage(1);
+    }, [historySearch, historyTypeFilter, historyStatusFilter]);
 
     const loadHistory = async () => {
         try {
@@ -221,19 +270,221 @@ function _TestSitePageImpl() {
                 setStep("complete");
                 setUrl(data.source_url);
             }
-        } catch (err) {
+        } catch {
             alert("Failed to load site details");
         } finally {
             setLoadingHistory(false);
         }
     };
 
+    // ─── Delete Handlers ─────────────────────────────────────────────────
+    const handleDelete = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this record? This action cannot be undone.")) return;
+        try {
+            setDeletingId(id);
+            const token = getAuthToken();
+            const response = await fetch(API_ENDPOINTS.websiteGenerator.delete(id), {
+                method: "DELETE",
+                headers: token ? { "Authorization": `Bearer ${token}` } : {}
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch((): { detail?: string } => ({}));
+                throw new Error(errorData.detail || "Failed to delete");
+            }
+            setPastSites(prev => prev.filter(s => s.id !== id));
+            setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+            if (result?.id === id) { setResult(null); setStep("idle"); }
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to delete record");
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Are you sure you want to delete ${selectedIds.size} record(s)? This action cannot be undone.`)) return;
+
+        setBulkDeleting(true);
+        const ids = Array.from(selectedIds);
+        const token = getAuthToken();
+        const results = await Promise.allSettled(
+            ids.map(async id => {
+                const response = await fetch(API_ENDPOINTS.websiteGenerator.delete(id), {
+                    method: "DELETE",
+                    headers: token ? { "Authorization": `Bearer ${token}` } : {}
+                });
+                if (!response.ok) {
+                    throw new Error(`Failed to delete ${id}`);
+                }
+                return id;
+            })
+        );
+        const deleted = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+        setPastSites(prev => prev.filter(s => !deleted.includes(s.id)));
+        setSelectedIds(new Set());
+        if (result && deleted.includes(result.id)) { setResult(null); setStep("idle"); }
+        if (deleted.length !== ids.length) {
+            showToast(`${ids.length - deleted.length} record(s) could not be deleted.`, "error");
+        }
+        setBulkDeleting(false);
+    };
+
+    // ─── Active Toggle Handler ───────────────────────────────────────────
+    const handleToggleActive = async (site: SiteListItem) => {
+        try {
+            setTogglingActiveId(site.id);
+            const token = getAuthToken();
+
+            if (site.is_active) {
+                // Deactivate this site
+                const response = await fetch(API_ENDPOINTS.websiteGenerator.deactivate(site.id), {
+                    method: "PATCH",
+                    headers: token ? { "Authorization": `Bearer ${token}` } : {}
+                });
+                if (!response.ok) throw new Error(await getErrorMessage(response, "Failed to deactivate"));
+                setPastSites(prev =>
+                    prev.map(s => s.id === site.id ? { ...s, is_active: false } : s)
+                );
+                showToast("Website deactivated — /landing now shows placeholder.", "success");
+            } else {
+                // Activate this site (deactivates all others)
+                const response = await fetch(API_ENDPOINTS.websiteGenerator.toggleActive(site.id), {
+                    method: "PATCH",
+                    headers: token ? { "Authorization": `Bearer ${token}` } : {}
+                });
+                if (!response.ok) throw new Error(await getErrorMessage(response, "Failed to activate"));
+                // Update all sites: only this one is active
+                setPastSites(prev =>
+                    prev.map(s => ({ ...s, is_active: s.id === site.id }))
+                );
+                showToast("Website is now LIVE on /landing!", "success");
+            }
+        } catch (err) {
+            showToast(err instanceof Error ? err.message : "Toggle failed", "error");
+        } finally {
+            setTogglingActiveId(null);
+        }
+    };
+
+    // ─── Selection Helpers ───────────────────────────────────────────────
+    const toggleSelect = useCallback((id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    }, []);
+
+    // ─── Filtered & Paginated History ────────────────────────────────────
+    const filteredHistory = pastSites.filter(site => {
+        if (historyTypeFilter !== "all" && site.generation_type !== historyTypeFilter) return false;
+        if (historyStatusFilter !== "all" && site.status !== historyStatusFilter) return false;
+        if (historySearch) {
+            const q = historySearch.toLowerCase();
+            if (!site.source_url.toLowerCase().includes(q)) return false;
+        }
+        return true;
+    });
+
+    const historyTotalPages = Math.ceil(filteredHistory.length / HISTORY_PER_PAGE);
+    const historyIndexLast = historyPage * HISTORY_PER_PAGE;
+    const historyIndexFirst = historyIndexLast - HISTORY_PER_PAGE;
+    const currentHistoryItems = filteredHistory.slice(historyIndexFirst, historyIndexLast);
+    const currentPageIds = currentHistoryItems.map(s => s.id);
+
+    const allCurrentPageSelected = currentPageIds.length > 0 && currentPageIds.every(id => selectedIds.has(id));
+    const someCurrentPageSelected = currentPageIds.some(id => selectedIds.has(id)) && !allCurrentPageSelected;
+
+    const toggleSelectAllPage = () => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (allCurrentPageSelected) {
+                currentPageIds.forEach(id => next.delete(id));
+            } else {
+                currentPageIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const selectAll = () => setSelectedIds(new Set(filteredHistory.map(s => s.id)));
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const CheckboxIcon = allCurrentPageSelected ? CheckSquare : someCurrentPageSelected ? MinusSquare : Square;
+
+    // ─── Utility Helpers ─────────────────────────────────────────────────
     const parseExtractedData = (jsonStr: string) => {
         try {
             return JSON.parse(jsonStr);
-        } catch (e) {
+        } catch {
             return null;
         }
+    };
+
+    const formatDate = (dateString: string): string => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    };
+
+    const formatTime = (dateString: string): string => {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    };
+
+    const formatFileSize = (bytes: number): string => {
+        if (!bytes || bytes === 0) return "—";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    };
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case "completed":
+                return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                        <CheckCircle2 className="w-3 h-3" /> Completed
+                    </span>
+                );
+            case "processing":
+                return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-amber-100 text-amber-700">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Processing
+                    </span>
+                );
+            case "failed":
+                return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-red-100 text-red-700">
+                        <AlertCircle className="w-3 h-3" /> Failed
+                    </span>
+                );
+            default:
+                return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-slate-100 text-slate-500">
+                        {status}
+                    </span>
+                );
+        }
+    };
+
+    const getTypeBadge = (type: string) => {
+        if (type === "redesign") {
+            return (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-violet-100 text-violet-700">
+                    <Sparkles className="w-3 h-3" /> AI Redesign
+                </span>
+            );
+        }
+        return (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-bold rounded-full uppercase tracking-wider bg-sky-100 text-sky-700">
+                <Globe className="w-3 h-3" /> Capture
+            </span>
+        );
     };
 
     const extractedData = result ? parseExtractedData(result.extraction_data) : null;
@@ -267,11 +518,14 @@ function _TestSitePageImpl() {
                 headers: token ? { "Authorization": `Bearer ${token}` } : {}
             });
 
-            if (!response.ok) throw new Error("Failed to publish");
+            if (!response.ok) throw new Error(await getErrorMessage(response, "Failed to activate"));
 
-            alert("Website published successfully to /landing");
+            setPastSites(prev =>
+                prev.map(site => ({ ...site, is_active: site.id === result.id }))
+            );
+            showToast("Website is now active on /landing.", "success");
         } catch (err) {
-            alert("Failed to publish website");
+            showToast(err instanceof Error ? err.message : "Failed to activate website", "error");
         } finally {
             setIsPublishing(false);
         }
@@ -279,6 +533,30 @@ function _TestSitePageImpl() {
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden">
+            {/* ─── Toast Notification ─────────────────────────────────────── */}
+            <AnimatePresence>
+                {toast && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                        transition={{ duration: 0.22 }}
+                        className={`fixed top-5 right-5 z-[200] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-bold ${
+                            toast.type === "success"
+                                ? "bg-emerald-600 border-emerald-500 text-white"
+                                : "bg-red-600 border-red-500 text-white"
+                        }`}
+                    >
+                        {toast.type === "success"
+                            ? <Zap className="w-4 h-4 shrink-0" />
+                            : <AlertCircle className="w-4 h-4 shrink-0" />}
+                        <span>{toast.message}</span>
+                        <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100 transition-opacity">
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             {!isFullScreen && <AppXcessSidebar />}
 
             <main className="flex-1 overflow-y-auto relative custom-scrollbar">
@@ -482,7 +760,7 @@ function _TestSitePageImpl() {
                                             <Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-200" />
                                         </div>
                                     ) : (
-                                        pastSites.map((site) => (
+                                        pastSites.slice(0, 8).map((site) => (
                                             <button
                                                 key={site.id}
                                                 onClick={() => viewPastSite(site.id)}
@@ -497,7 +775,12 @@ function _TestSitePageImpl() {
                                                 <p className={`text-[10px] font-bold opacity-60 ${result?.id === site.id ? "text-white" : "text-slate-400"}`}>
                                                     {new Date(site.created_at).toLocaleDateString()}
                                                 </p>
-                                                {site.redesigned_at && (
+                                                {site.generation_type === "redesign" && (
+                                                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${result?.id === site.id ? "bg-white/20 text-white" : "bg-violet-100 text-violet-600"}`}>
+                                                        <Sparkles className="w-2 h-2" /> Redesigned
+                                                    </div>
+                                                )}
+                                                {site.redesigned_at && site.generation_type !== "redesign" && (
                                                     <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${result?.id === site.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-600"}`}>
                                                         <Sparkles className="w-2 h-2" /> Redesigned
                                                     </div>
@@ -626,6 +909,364 @@ function _TestSitePageImpl() {
                                 </div>
                             )}
                         </div>
+                    </div>
+
+                    {/* ═══════════════════════════════════════════════════════
+                        HISTORY & ACTIVITY TRACKING SECTION
+                    ═══════════════════════════════════════════════════════ */}
+                    <div className="mt-12">
+                        {/* Section Header */}
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-800 tracking-tight uppercase">
+                                    Generation History
+                                </h2>
+                                <p className="text-xs text-slate-500 font-medium mt-1">
+                                    Track all website capture and redesign activities with full audit trail.
+                                </p>
+                            </div>
+
+                            {/* Filter Pills */}
+                            <div className="flex items-center gap-3 flex-wrap">
+                                {/* Type filter */}
+                                <div className="flex items-center gap-1 bg-white border border-slate-200/80 p-1 rounded-xl shadow-sm">
+                                    {(["all", "capture", "redesign"] as const).map(tab => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setHistoryTypeFilter(tab)}
+                                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 uppercase tracking-widest cursor-pointer ${
+                                                historyTypeFilter === tab
+                                                    ? "bg-slate-900 text-white shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-800"
+                                            }`}
+                                        >
+                                            {tab === "all" ? "All Types" : tab === "capture" ? "Capture" : "AI Redesign"}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Status filter */}
+                                <div className="flex items-center gap-1 bg-white border border-slate-200/80 p-1 rounded-xl shadow-sm">
+                                    {(["all", "completed", "processing", "failed"] as const).map(tab => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setHistoryStatusFilter(tab)}
+                                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 uppercase tracking-widest cursor-pointer ${
+                                                historyStatusFilter === tab
+                                                    ? "bg-slate-900 text-white shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-800"
+                                            }`}
+                                        >
+                                            {tab === "all" ? "All Status" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="mb-4">
+                            <div className="relative max-w-md">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search by URL..."
+                                    value={historySearch}
+                                    onChange={(e) => setHistorySearch(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Bulk Actions Overlay */}
+                        <AnimatePresence>
+                            {selectedIds.size > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="flex flex-wrap items-center gap-4 px-5 py-3.5 mb-4 bg-slate-900 border border-slate-800 rounded-xl shadow-lg relative overflow-hidden"
+                                >
+                                    <div className="absolute top-0 left-0 w-full h-[1.5px] bg-primary animate-pulse" />
+
+                                    <span className="text-xs font-semibold text-white flex-1">
+                                        {selectedIds.size} record{selectedIds.size > 1 ? "s" : ""} selected for operation
+                                    </span>
+
+                                    {selectedIds.size < filteredHistory.length && (
+                                        <button
+                                            onClick={selectAll}
+                                            className="text-xs font-semibold text-indigo-300 hover:text-indigo-200 underline underline-offset-2 transition-colors cursor-pointer"
+                                        >
+                                            Select all {filteredHistory.length}
+                                        </button>
+                                    )}
+
+                                    <button
+                                        onClick={clearSelection}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors cursor-pointer text-slate-300"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                        Clear Selection
+                                    </button>
+
+                                    <button
+                                        onClick={handleBulkDelete}
+                                        disabled={bulkDeleting}
+                                        className="flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all disabled:opacity-60 cursor-pointer shadow-md"
+                                    >
+                                        {bulkDeleting ? (
+                                            <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" />
+                                        ) : (
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        )}
+                                        {bulkDeleting ? "Deleting…" : `Bulk Delete (${selectedIds.size})`}
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* History Table */}
+                        {loadingHistory ? (
+                            <div className="bg-white rounded-2xl p-16 text-center border border-slate-200 shadow-sm">
+                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-4" />
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Loading generation history...</p>
+                            </div>
+                        ) : filteredHistory.length === 0 ? (
+                            <div className="bg-white rounded-2xl p-16 text-center border border-slate-200 shadow-sm">
+                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                                    <Clock className="w-7 h-7 text-slate-300" />
+                                </div>
+                                <h3 className="text-base font-bold text-slate-800 uppercase tracking-wider mb-2">
+                                    No Generation Records
+                                </h3>
+                                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                                    {historySearch || historyTypeFilter !== "all" || historyStatusFilter !== "all"
+                                        ? "No records match your current filter criteria. Try adjusting your search or filters."
+                                        : "Website generation records will appear here once you capture or redesign a site."
+                                    }
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-200/80">
+                                                {/* Select-all checkbox */}
+                                                <th className="px-5 py-4 w-10 text-center">
+                                                    <button
+                                                        onClick={toggleSelectAllPage}
+                                                        title={allCurrentPageSelected ? "Deselect Page" : "Select Page"}
+                                                        className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer mx-auto"
+                                                    >
+                                                        <CheckboxIcon className="w-4 h-4" />
+                                                    </button>
+                                                </th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Source URL</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Type</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Date & Time</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Status</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500">Asset Size</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Active</th>
+                                                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {currentHistoryItems.map((site) => {
+                                                const isSelected = selectedIds.has(site.id);
+                                                return (
+                                                    <tr
+                                                        key={site.id}
+                                                        className={`transition-colors hover:bg-slate-50/80 ${
+                                                            isSelected ? "bg-indigo-50/30" : ""
+                                                        } ${result?.id === site.id ? "ring-1 ring-inset ring-primary/20 bg-primary/5" : ""}`}
+                                                    >
+                                                        {/* Per-row checkbox */}
+                                                        <td className="px-5 py-4 text-center">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); toggleSelect(site.id); }}
+                                                                className={`flex items-center justify-center transition-colors cursor-pointer mx-auto ${
+                                                                    isSelected ? "text-indigo-600" : "text-slate-400 hover:text-indigo-600"
+                                                                }`}
+                                                            >
+                                                                {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                                            </button>
+                                                        </td>
+
+                                                        {/* Source URL */}
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div className="flex items-center gap-2 max-w-[280px]">
+                                                                <Globe className="w-4 h-4 text-slate-400 shrink-0" />
+                                                                <div className="min-w-0">
+                                                                    <p className="text-xs font-semibold text-slate-800 truncate">
+                                                                        {site.source_url.replace(/^https?:\/\//, '')}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                                                                        {site.source_url}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Type */}
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            {getTypeBadge(site.generation_type)}
+                                                        </td>
+
+                                                        {/* Date & Time */}
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <div>
+                                                                <p className="text-xs font-mono text-slate-600">{formatDate(site.created_at)}</p>
+                                                                <p className="text-[10px] font-mono text-slate-400 mt-0.5">{formatTime(site.created_at)}</p>
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Status */}
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            {getStatusBadge(site.status)}
+                                                        </td>
+
+                                                        {/* Asset Size */}
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <span className="text-xs font-mono text-slate-500">
+                                                                {formatFileSize(
+                                                                    (site.redesigned_html_size || 0) > 0
+                                                                        ? site.redesigned_html_size!
+                                                                        : site.generated_html_size || 0
+                                                                )}
+                                                            </span>
+                                                        </td>
+
+                                                        {/* Active Toggle */}
+                                                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                            <div className="flex flex-col items-center gap-1.5">
+                                                                {/* Toggle Switch */}
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); if (site.status === "completed") handleToggleActive(site); }}
+                                                                    disabled={togglingActiveId === site.id || site.status !== "completed"}
+                                                                    title={site.status !== "completed" ? "Only completed sites can be activated" : site.is_active ? "Click to deactivate" : "Click to activate"}
+                                                                    className={`relative inline-flex items-center h-6 w-11 rounded-full transition-all duration-300 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                                        site.is_active
+                                                                            ? "bg-emerald-500 shadow-lg shadow-emerald-500/30"
+                                                                            : "bg-slate-300 hover:bg-slate-400"
+                                                                    }`}
+                                                                >
+                                                                    <span
+                                                                        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-300 ${
+                                                                            site.is_active ? "translate-x-6" : "translate-x-1"
+                                                                        }`}
+                                                                    >
+                                                                        {togglingActiveId === site.id && (
+                                                                            <span className="absolute inset-0 flex items-center justify-center">
+                                                                                <span className="w-2.5 h-2.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </button>
+                                                                {/* Status Badge */}
+                                                                {site.is_active ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                                        LIVE
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider bg-slate-100 text-slate-400">
+                                                                        Inactive
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Actions */}
+                                                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                {/* View / Open */}
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); viewPastSite(site.id); }}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/60 rounded-lg transition-all cursor-pointer"
+                                                                >
+                                                                    <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                                                                    <span>View</span>
+                                                                </button>
+
+                                                                {/* Delete */}
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDelete(site.id); }}
+                                                                    disabled={deletingId === site.id}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all cursor-pointer disabled:opacity-40"
+                                                                >
+                                                                    {deletingId === site.id ? (
+                                                                        <><div className="animate-spin rounded-full h-3 w-3 border-b-2 border-rose-600" /> Deleting...</>
+                                                                    ) : (
+                                                                        <><Trash2 className="w-3.5 h-3.5" /> Delete</>
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+
+                                    {/* Pagination footer */}
+                                    {filteredHistory.length > HISTORY_PER_PAGE && (
+                                        <div className="px-6 py-4 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
+                                            <div className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">
+                                                Showing{" "}
+                                                <span className="text-slate-800 font-semibold font-mono">{historyIndexFirst + 1}</span>{" "}to{" "}
+                                                <span className="text-slate-800 font-semibold font-mono">{Math.min(historyIndexLast, filteredHistory.length)}</span>{" "}of{" "}
+                                                <span className="text-slate-800 font-semibold font-mono">{filteredHistory.length}</span>{" "}records
+                                                {selectedIds.size > 0 && (
+                                                    <span className="ml-2 text-indigo-600 font-bold">· {selectedIds.size} Selected</span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
+                                                    disabled={historyPage === 1}
+                                                    className="p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 bg-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                                >
+                                                    <ChevronLeft className="w-4 h-4" />
+                                                </button>
+
+                                                <div className="flex gap-1.5">
+                                                    {(() => {
+                                                        const maxButtons = 5;
+                                                        let start = Math.max(1, historyPage - Math.floor(maxButtons / 2));
+                                                        const end = Math.min(historyTotalPages, start + maxButtons - 1);
+                                                        if (end - start + 1 < maxButtons) start = Math.max(1, end - maxButtons + 1);
+                                                        return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+                                                    })().map(page => (
+                                                        <button
+                                                            key={page}
+                                                            onClick={() => setHistoryPage(page)}
+                                                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                                                historyPage === page
+                                                                    ? "bg-slate-900 text-white shadow-sm border border-slate-900"
+                                                                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                                                            }`}
+                                                        >
+                                                            {page}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <button
+                                                    onClick={() => setHistoryPage(prev => Math.min(prev + 1, historyTotalPages))}
+                                                    disabled={historyPage === historyTotalPages}
+                                                    className="p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 bg-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                                >
+                                                    <ChevronRight className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </main>

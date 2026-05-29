@@ -100,7 +100,10 @@ export const API_ENDPOINTS = {
     redesign: (id: string) => apiUrl(`api/website-generator/redesign/${id}`),
     edit: (id: string) => apiUrl(`api/website-generator/edit/${id}`),
     publish: (id: string) => apiUrl(`api/website-generator/publish/${id}`),
+    toggleActive: (id: string) => apiUrl(`api/website-generator/toggle-active/${id}`),
+    deactivate: (id: string) => apiUrl(`api/website-generator/deactivate/${id}`),
     landingContent: apiUrl("api/website-generator/landing-content"),
+    delete: (id: string) => apiUrl(`api/website-generator/${id}`),
   },
 } as const;
 

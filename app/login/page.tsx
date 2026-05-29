@@ -14,7 +14,7 @@ export default function LoginPage() {
       logoAlt="LEUCADIA Logo"
       title={settings?.company_name ? `${settings.company_name} Portal` : "Wastewater District Login"}
       subtitle="Enter your credentials to access the system"
-      bgClass="min-h-screen flex items-center justify-center bg-[#fafafa] relative overflow-hidden"
+      bgClass="min-h-screen flex items-center justify-center bg-white relative z-10"
       cardClass="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm w-full max-w-md relative z-10"
       emailLabelClass="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2"
       passwordLabelClass="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2"
@@ -26,7 +26,7 @@ export default function LoginPage() {
       loginApiEndpoint={apiUrl("api/admin/login")}
       tokenStorageKey="admin_token"
       userStorageKey="admin_user"
-      redirectPath="/bot"
+      redirectPath="/"
       authCheckFn={checkAuthStatus}
       buttonText="Login"
       loadingButtonText="Logging in..."

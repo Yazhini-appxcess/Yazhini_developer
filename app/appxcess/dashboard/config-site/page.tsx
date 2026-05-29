@@ -45,10 +45,10 @@ export default function WebsiteConfigPage() {
         }
     }, [router]);
     if (!ENABLE_WEBSITE_MODULE) return null;
-    return <_WebsiteConfigPageImpl />;
+    return <WebsiteConfigPageImpl />;
 }
 
-function _WebsiteConfigPageImpl() {
+function WebsiteConfigPageImpl() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);

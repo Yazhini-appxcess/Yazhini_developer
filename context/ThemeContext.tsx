@@ -84,7 +84,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     const [settings, setSettings] = useState<OrganizationSettings | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const isSuperAdminRoute = pathname?.startsWith("/appxcess") || pathname?.startsWith("/super-admin");
+    const isSuperAdminRoute = (pathname?.startsWith("/appxcess") && !pathname?.startsWith("/appxcess/backup")) || pathname?.startsWith("/super-admin");
 
     const hexToRgb = (hex: string) => {
         if (!hex) return null;
@@ -200,16 +200,24 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
     const applyFavicon = (url: string) => {
         if (typeof document === "undefined" || !url) return;
-        let link = document.querySelector("link[rel='icon']");
-        if (!link) {
-            link = document.createElement("link");
-            link.setAttribute("rel", "icon");
-            if (document.head) {
-                document.head.appendChild(link);
-            }
-        }
-        if (link) {
-            (link as HTMLLinkElement).href = `${url.split("?")[0]}?v=${Date.now()}`;
+
+        const cacheBustedUrl = `${url.split("?")[0]}?v=${Date.now()}`;
+
+        const existingLinks = document.querySelectorAll("link[rel*='icon']");
+        if (existingLinks.length > 0) {
+            existingLinks.forEach(link => {
+                (link as HTMLLinkElement).href = cacheBustedUrl;
+            });
+        } else {
+            const newLink = document.createElement("link");
+            newLink.setAttribute("rel", "icon");
+            newLink.href = cacheBustedUrl;
+            document.head?.appendChild(newLink);
+
+            const appleLink = document.createElement("link");
+            appleLink.setAttribute("rel", "apple-touch-icon");
+            appleLink.href = cacheBustedUrl;
+            document.head?.appendChild(appleLink);
         }
     };
 

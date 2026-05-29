@@ -2,14 +2,14 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "@/context/ThemeContext";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ChevronLeft,
+  ChevronRight,
   HelpCircle,
-  Sparkles, 
+  Sparkles,
   Settings2,
   Database,
   Layers,
@@ -18,6 +18,31 @@ import {
   Compass,
   ArrowRightLeft
 } from "lucide-react";
+interface CustomSectionLink {
+  role?: string;
+  openType?: string;
+  href: string;
+  name: string;
+  icon?: string;
+}
+
+interface CustomSection {
+  title: string;
+  links?: CustomSectionLink[];
+}
+
+// Module-level variable to preserve scroll position across mounts/renders
+let preservedScrollTop = 0;
+if (typeof window !== "undefined") {
+  try {
+    const saved = sessionStorage.getItem("sidebar_scroll_pos");
+    if (saved) {
+      preservedScrollTop = parseInt(saved, 10);
+    }
+  } catch (e) {
+    console.error("Error reading sidebar scroll position from sessionStorage:", e);
+  }
+}
 
 export default function CLSidebar() {
   const { settings } = useTheme();
@@ -26,19 +51,41 @@ export default function CLSidebar() {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [userEmail, setUserEmail] = useState<string>("");
   const [userName, setUserName] = useState<string>("");
-  
+
   // Sidebar state
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("sidebar_collapsed") === "true";
+    }
+    return false;
+  });
   const [mounted, setMounted] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState("Default Core");
+  // refs for scroll preservation
+  const navRef = useRef<HTMLDivElement>(null);
+  const scrollPos = useRef(preservedScrollTop);
+
+  const updateScrollPos = () => {
+    if (navRef.current) {
+      const top = navRef.current.scrollTop;
+      scrollPos.current = top;
+      preservedScrollTop = top;
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem("sidebar_scroll_pos", String(top));
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  };
 
   useEffect(() => {
-    // Load collapse state from localstorage
-    const collapsed = localStorage.getItem("sidebar_collapsed") === "true";
-    setIsCollapsed(collapsed);
-    setMounted(true);
+    const handle = setTimeout(() => {
+      setMounted(true);
+    }, 0);
 
     const checkSuperAdmin = () => {
       const adminUser = localStorage.getItem("admin_user");
@@ -57,8 +104,30 @@ export default function CLSidebar() {
 
     checkSuperAdmin();
     window.addEventListener("storage", checkSuperAdmin);
-    return () => window.removeEventListener("storage", checkSuperAdmin);
+    return () => {
+      clearTimeout(handle);
+      window.removeEventListener("storage", checkSuperAdmin);
+    };
   }, []);
+
+  // Restore sidebar scroll position on mount, AFTER Framer Motion has laid out items.
+  // We use double-requestAnimationFrame so React paint + framer-motion stagger
+  // both complete before we try to set scrollTop (otherwise scrollHeight is still 0).
+  useEffect(() => {
+    let raf1: number;
+    let raf2: number;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (navRef.current && preservedScrollTop > 0) {
+          navRef.current.scrollTop = preservedScrollTop;
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []); // mount only — runs once per sidebar instance
 
   const toggleCollapse = () => {
     const nextState = !isCollapsed;
@@ -121,9 +190,9 @@ export default function CLSidebar() {
 
   if (!mounted) {
     return (
-      <aside 
+      <aside
         style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
-        className="w-64 h-[calc(100vh-2rem)] m-4 rounded-[24px] border flex-shrink-0 hidden lg:block shadow-xl" 
+        className="w-64 h-[calc(100vh-2rem)] m-4 rounded-[24px] border flex-shrink-0 hidden lg:block shadow-xl"
       />
     );
   }
@@ -137,18 +206,18 @@ export default function CLSidebar() {
         borderColor: 'var(--sidebar-border)',
         color: 'var(--sidebar-text)',
       }}
-      className="m-4 rounded-[24px] border flex flex-col flex-shrink-0 relative overflow-hidden hidden lg:flex h-[calc(100vh-2rem)] z-40 group/sidebar shadow-2xl backdrop-blur-xl"
+      className="m-4 rounded-[24px] border flex flex-col flex-shrink-0 relative overflow-visible hidden lg:flex h-[calc(100vh-2rem)] z-40 group/sidebar shadow-2xl backdrop-blur-xl"
     >
       {/* Dynamic Ambient Backlight inside Sidebar */}
-      <div 
+      <div
         style={{ background: 'rgba(var(--primary-rgb), 0.08)' }}
-        className="absolute top-0 right-0 w-32 h-32 rounded-full filter blur-[40px] pointer-events-none -mr-16 -mt-16 transition-opacity duration-300 group-hover/sidebar:opacity-100" 
+        className="absolute top-0 right-0 w-32 h-32 rounded-full filter blur-[40px] pointer-events-none -mr-16 -mt-16 transition-opacity duration-300 group-hover/sidebar:opacity-100"
       />
 
       {/* Collapse Trigger Button */}
       <button
         onClick={toggleCollapse}
-        className="absolute -right-3 top-12 z-50 w-6.5 h-6.5 rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-all duration-300 border dynamic-switcher-btn"
+        className="absolute -right-3.5 top-12 z-50 w-7 h-7 rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-all duration-300 border dynamic-switcher-btn"
       >
         {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
       </button>
@@ -176,7 +245,7 @@ export default function CLSidebar() {
               {(settings?.company_name || "A").charAt(0).toUpperCase()}
             </div>
           )}
-          
+
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0, x: -10 }}
@@ -198,30 +267,37 @@ export default function CLSidebar() {
           )}
         </div>
 
-        {/* Workspace Switcher Component */}
+        {/* Workspace Switcher — inline accordion (no floating/overlap) */}
         {!isCollapsed && (
-          <div className="mt-4 px-1 relative">
+          <div className="mt-4 px-1">
             <button
               onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}
               className="w-full py-2 px-3 rounded-xl border flex items-center justify-between text-left text-xs font-semibold transition-all duration-150 cursor-pointer shadow-sm dynamic-switcher-btn"
             >
               <div className="flex items-center gap-2 truncate">
-              <Layers className="w-3.5 h-3.5 flex-shrink-0 animate-pulse icon-accent" />
+                <Layers className="w-3.5 h-3.5 flex-shrink-0 animate-pulse icon-accent" />
                 <span className="truncate">{selectedWorkspace}</span>
               </div>
-              <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--sidebar-text)', opacity: 0.7 }} />
+              <motion.span
+                animate={{ rotate: showWorkspaceMenu ? 180 : 0 }}
+                transition={{ duration: 0.2 }}
+                style={{ display: 'inline-flex' }}
+              >
+                <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--sidebar-text)', opacity: 0.7 }} />
+              </motion.span>
             </button>
 
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {showWorkspaceMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowWorkspaceMenu(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="absolute left-0 right-0 mt-1 z-50 p-1.5 rounded-xl border shadow-2xl dynamic-dropdown-menu"
-                  >
+                <motion.div
+                  key="workspace-menu"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  style={{ overflow: "hidden" }}
+                >
+                  <div className="pt-1 pb-1 px-1 space-y-0.5">
                     {["Default Core", "AI Grounding Hub", "Analytics Engine"].map((ws) => (
                       <button
                         key={ws}
@@ -229,17 +305,16 @@ export default function CLSidebar() {
                           setSelectedWorkspace(ws);
                           setShowWorkspaceMenu(false);
                         }}
-                        className={`w-full py-2 px-3 rounded-lg text-left text-xs font-medium transition-colors ${
-                          selectedWorkspace === ws
-                            ? "dynamic-dropdown-item-active"
-                            : "dynamic-dropdown-item"
-                        }`}
+                        className={`w-full py-2 px-3 rounded-lg text-left text-xs font-medium transition-colors ${selectedWorkspace === ws
+                          ? "dynamic-dropdown-item-active"
+                          : "dynamic-dropdown-item"
+                          }`}
                       >
                         {ws}
                       </button>
                     ))}
-                  </motion.div>
-                </>
+                  </div>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
@@ -249,7 +324,7 @@ export default function CLSidebar() {
       <div className="mx-4 h-px" style={{ background: 'var(--sidebar-border)', opacity: 0.5 }} />
 
       {/* Navigation Menu */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto no-scrollbar relative z-20">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto no-scrollbar relative z-20" ref={navRef} onScroll={updateScrollPos}>
         <motion.div
           variants={containerVariants}
           initial="hidden"
@@ -262,13 +337,13 @@ export default function CLSidebar() {
               <motion.div key={item.name} variants={itemVariants}>
                 <Link
                   href={item.href}
+                  scroll={false}
                   onMouseEnter={() => setHoveredItem(item.name)}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className={`group relative flex items-center justify-start py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                    isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                  } ${
-                    isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
-                  }`}
+                  onClick={updateScrollPos}
+                  className={`group relative flex items-center justify-start py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                    } ${isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
+                    }`}
                 >
                   {/* Sliding Gradient Beam on Active */}
                   {isActive && (
@@ -292,7 +367,6 @@ export default function CLSidebar() {
 
                   <span
                     className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10"
-                    style={{ color: isActive ? `var(--primary-color)` : 'var(--sidebar-text)' }}
                   >
                     {item.icon}
                   </span>
@@ -334,15 +408,15 @@ export default function CLSidebar() {
                 <motion.div variants={itemVariants}>
                   <Link
                     href="/erp"
+                    scroll={false}
                     onMouseEnter={() => setHoveredItem("ERP Hub")}
                     onMouseLeave={() => setHoveredItem(null)}
-                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                      isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                    } ${
-                      pathname.startsWith("/erp") || pathname === "/sage-300" || pathname === "/procore"
+                    onClick={updateScrollPos}
+                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                      } ${pathname.startsWith("/erp") || pathname === "/sage-300" || pathname === "/procore"
                         ? "dynamic-nav-item-active"
                         : "dynamic-nav-item"
-                    }`}
+                      }`}
                   >
                     {(pathname.startsWith("/erp") || pathname === "/sage-300" || pathname === "/procore") && (
                       <>
@@ -350,7 +424,7 @@ export default function CLSidebar() {
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                       </>
                     )}
-                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: (pathname.startsWith("/erp") || pathname === "/sage-300" || pathname === "/procore") ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                       business_center
                     </span>
                     {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">ERP Hub</span>}
@@ -367,15 +441,15 @@ export default function CLSidebar() {
                 <motion.div variants={itemVariants}>
                   <Link
                     href="/crm"
+                    scroll={false}
                     onMouseEnter={() => setHoveredItem("CRM Hub")}
                     onMouseLeave={() => setHoveredItem(null)}
-                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                      isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                    } ${
-                      pathname.startsWith("/crm")
+                    onClick={updateScrollPos}
+                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                      } ${pathname.startsWith("/crm")
                         ? "dynamic-nav-item-active"
                         : "dynamic-nav-item"
-                    }`}
+                      }`}
                   >
                     {pathname.startsWith("/crm") && (
                       <>
@@ -383,7 +457,7 @@ export default function CLSidebar() {
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                       </>
                     )}
-                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: pathname.startsWith("/crm") ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                       account_tree
                     </span>
                     {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">CRM Hub</span>}
@@ -400,15 +474,15 @@ export default function CLSidebar() {
                 <motion.div variants={itemVariants}>
                   <Link
                     href="/mes"
+                    scroll={false}
                     onMouseEnter={() => setHoveredItem("MES Hub")}
                     onMouseLeave={() => setHoveredItem(null)}
-                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                      isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                    } ${
-                      pathname.startsWith("/mes")
+                    onClick={updateScrollPos}
+                    className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                      } ${pathname.startsWith("/mes")
                         ? "dynamic-nav-item-active"
                         : "dynamic-nav-item"
-                    }`}
+                      }`}
                   >
                     {pathname.startsWith("/mes") && (
                       <>
@@ -416,7 +490,7 @@ export default function CLSidebar() {
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                       </>
                     )}
-                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: pathname.startsWith("/mes") ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                    <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                       precision_manufacturing
                     </span>
                     {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">MES Hub</span>}
@@ -447,13 +521,13 @@ export default function CLSidebar() {
                   <motion.div key={item.name} variants={itemVariants}>
                     <Link
                       href={item.href}
+                      scroll={false}
                       onMouseEnter={() => setHoveredItem(item.name)}
                       onMouseLeave={() => setHoveredItem(null)}
-                      className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                        isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                      } ${
-                        isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
-                      }`}
+                      onClick={updateScrollPos}
+                      className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                        } ${isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
+                        }`}
                     >
                       {isActive && (
                         <>
@@ -461,7 +535,7 @@ export default function CLSidebar() {
                           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                         </>
                       )}
-                      <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: isActive ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                      <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                         {item.icon}
                       </span>
                       {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">{item.name}</span>}
@@ -478,8 +552,8 @@ export default function CLSidebar() {
           )}
 
           {/* Custom Dynamic Sections */}
-          {settings?.custom_sections?.map((section, sIndex) => {
-            const visibleLinks = (section.links || []).filter((link: any) => {
+          {(settings?.custom_sections as CustomSection[] | undefined)?.map((section, sIndex) => {
+            const visibleLinks = (section.links || []).filter((link) => {
               if (!link.role || link.role === "all") return true;
               if (link.role === "superadmin_only") return isSuperAdmin;
               return isSuperAdmin || permissions.includes(link.role);
@@ -496,23 +570,21 @@ export default function CLSidebar() {
                     <div className="w-8 h-[1px] mx-auto my-2" style={{ background: 'var(--sidebar-border)', opacity: 0.5 }} />
                   )}
                 </div>
-                {visibleLinks.map((link: any, lIndex: number) => {
+                {visibleLinks.map((link, lIndex) => {
                   const isActive = pathname === link.href;
-                  
+
                   if (link.openType === "external") {
-                     return (
+                    return (
                       <motion.div key={`custom-${sIndex}-${lIndex}`} variants={itemVariants}>
                         <a
-                           href={link.href}
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           onMouseEnter={() => setHoveredItem(link.name)}
-                           onMouseLeave={() => setHoveredItem(null)}
-                           className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                             isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                           } ${
-                             isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
-                           }`}
+                          href={link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onMouseEnter={() => setHoveredItem(link.name)}
+                          onMouseLeave={() => setHoveredItem(null)}
+                          className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                            } ${isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
+                            }`}
                         >
                           {isActive && (
                             <>
@@ -520,7 +592,7 @@ export default function CLSidebar() {
                               <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                             </>
                           )}
-                          <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: isActive ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                          <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                             {link.icon || "link"}
                           </span>
                           {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">{link.name}</span>}
@@ -538,13 +610,13 @@ export default function CLSidebar() {
                     <motion.div key={`custom-${sIndex}-${lIndex}`} variants={itemVariants}>
                       <Link
                         href={link.href}
+                        scroll={false}
                         onMouseEnter={() => setHoveredItem(link.name)}
                         onMouseLeave={() => setHoveredItem(null)}
-                        className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
-                          isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
-                        } ${
-                          isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
-                        }`}
+                        onClick={updateScrollPos}
+                        className={`group relative flex items-center py-3 rounded-2xl text-[13px] font-medium transition-all duration-200 cursor-pointer overflow-hidden ${isCollapsed ? "px-0 justify-center h-12 w-12 mx-auto" : "px-4 gap-3.5"
+                          } ${isActive ? "dynamic-nav-item-active" : "dynamic-nav-item"
+                          }`}
                       >
                         {isActive && (
                           <>
@@ -552,7 +624,7 @@ export default function CLSidebar() {
                             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full" style={{ background: `var(--primary-color)` }} />
                           </>
                         )}
-                        <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10" style={{ color: isActive ? `var(--primary-color)` : 'var(--sidebar-text)' }}>
+                        <span className="material-icons-round text-[20px] flex-shrink-0 transition-all duration-200 relative z-10">
                           {link.icon || "link"}
                         </span>
                         {!isCollapsed && <span className="truncate relative z-10 transition-colors duration-200">{link.name}</span>}
@@ -574,7 +646,7 @@ export default function CLSidebar() {
       {/* Futuristic glowing Quick AI Assistant Button */}
       {!isCollapsed ? (
         <div className="px-4 py-3 relative z-20">
-          <button className="w-full copilot-btn px-4 py-2.5 flex items-center gap-2 justify-center cursor-pointer">
+          <button className="w-full copilot-btn px-4 py-2.5 flex items-center gap-2 justify-center whitespace-nowrap overflow-visible cursor-pointer">
             <Sparkles className="w-3.5 h-3.5 animate-pulse" />
             <span className="text-[11px] font-bold tracking-wider uppercase">Launch AI Copilot</span>
           </button>
@@ -600,9 +672,8 @@ export default function CLSidebar() {
 
       {/* User Info Footer */}
       <div className="px-4 py-4 relative z-20">
-        <div className={`flex items-center rounded-2xl transition-all duration-150 cursor-default ${
-          isCollapsed ? "justify-center p-1.5" : "px-3 py-2.5 gap-3"
-        } dynamic-profile-card`}>
+        <div className={`flex items-center rounded-2xl transition-all duration-150 cursor-default ${isCollapsed ? "justify-center p-1.5" : "px-3 py-2.5 gap-3"
+          } dynamic-profile-card`}>
           <div
             className="w-8 h-8 rounded-xl flex items-center justify-center text-[12px] font-black flex-shrink-0 relative border"
             style={{
@@ -614,7 +685,7 @@ export default function CLSidebar() {
             {(userName || "A").charAt(0).toUpperCase()}
             <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-500 border rounded-full" style={{ borderColor: 'var(--sidebar-bg)' }} />
           </div>
-          
+
           {!isCollapsed && (
             <motion.div
               initial={{ opacity: 0 }}
