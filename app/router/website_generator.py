@@ -25,11 +25,29 @@ async def generate_website(
 ):
     """
     Generate a modern HTML website from an existing URL.
-    1. Scrape content
-    2. Extract meaningful business data via AI
-    3. Generate new HTML/CSS via AI
-    4. Store in MongoDB
+    1. Create a processing record in MongoDB.
+    2. Scrape content.
+    3. Extract meaningful business data via AI.
+    4. Update status to completed or failed.
     """
+    try:
+        db_mongo = mongodb_settings.get_database()
+        collection = db_mongo["generated_sites"]
+        
+        doc = {
+            "source_url": url,
+            "generation_type": "capture",
+            "status": "processing",
+            "created_at": datetime.utcnow(),
+            "admin_id": current_user.id
+        }
+        
+        insert_result = await collection.insert_one(doc)
+        site_id = str(insert_result.inserted_id)
+    except Exception as e:
+        logger.error(f"Error creating initial site record: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
     try:
         # 1. Scrape Content
         scraper = WebScraper()
@@ -102,28 +120,43 @@ async def generate_website(
             logger.error(f"Error in extraction step: {e}")
             extraction_data = "{\"brand_name\": \"Extraction Error\", \"primary_services\": [], \"value_proposition\": \"Error\", \"brand_tone\": [], \"contact_info\": \"Unavailable\", \"color_palette\": []}"
 
-        # 4. Store in MongoDB
-        db_mongo = mongodb_settings.get_database()
-        collection = db_mongo["generated_sites"]
-        
-        doc = {
-            "source_url": url,
-            "extraction_data": extraction_data,
-            "generated_html": generated_html,
-            "created_at": datetime.utcnow(),
-            "admin_id": current_user.id
-        }
-        
-        result = await collection.insert_one(doc)
+        # 3. Update MongoDB to completed
+        await collection.update_one(
+            {"_id": ObjectId(site_id)},
+            {
+                "$set": {
+                    "extraction_data": extraction_data,
+                    "generated_html": generated_html,
+                    "status": "completed",
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
         
         return {
-            "id": str(result.inserted_id),
+            "id": site_id,
             "extraction_data": extraction_data,
             "generated_html": generated_html
         }
 
     except Exception as e:
         logger.error(f"Error in website generation: {e}")
+        try:
+            await collection.update_one(
+                {"_id": ObjectId(site_id)},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": str(e),
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+        except Exception as db_err:
+            logger.error(f"Failed to update failed status in DB: {db_err}")
+            
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/list")
@@ -140,14 +173,31 @@ async def list_generated_sites(
         cursor = collection.find().sort("created_at", -1)
         sites = await cursor.to_list(length=100)
         
-        # Convert ObjectId to string
+        # Convert ObjectId to string and optimize payload size
         for site in sites:
             site["id"] = str(site["_id"])
             del site["_id"]
-            # Exclude large HTML from list
+            
+            # Default or infer values for older records
+            if "status" not in site:
+                site["status"] = "completed"
+            if "generation_type" not in site:
+                site["generation_type"] = "redesign" if ("redesigned_html" in site or "redesigned_at" in site) else "capture"
+                
+            # Exclude large HTML from list and store sizes
             if "generated_html" in site:
                 site["has_html"] = True
+                site["generated_html_size"] = len(site["generated_html"])
                 del site["generated_html"]
+            else:
+                site["generated_html_size"] = 0
+
+            if "redesigned_html" in site:
+                site["has_redesigned_html"] = True
+                site["redesigned_html_size"] = len(site["redesigned_html"])
+                del site["redesigned_html"]
+            else:
+                site["redesigned_html_size"] = 0
                 
         return {"sites": sites}
     except Exception as e:
@@ -194,10 +244,17 @@ async def get_site_detail(
         site["id"] = str(site["_id"])
         del site["_id"]
         
+        # Ensure status and type are present in detail too
+        if "status" not in site:
+            site["status"] = "completed"
+        if "generation_type" not in site:
+            site["generation_type"] = "redesign" if ("redesigned_html" in site or "redesigned_at" in site) else "capture"
+            
         return site
     except Exception as e:
         logger.error(f"Error getting site details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/redesign/{site_id}")
 async def redesign_website(
     site_id: str,
@@ -212,7 +269,7 @@ async def redesign_website(
         db_mongo = mongodb_settings.get_database()
         collection = db_mongo["generated_sites"]
         
-        # 1. Get the site
+        # 1. Get the original site
         site = await collection.find_one({"_id": ObjectId(site_id)})
         if not site:
             raise HTTPException(status_code=404, detail="Site not found")
@@ -221,6 +278,26 @@ async def redesign_website(
         if not source_html:
              raise HTTPException(status_code=400, detail="No source HTML found for this site")
 
+        # Create a new redesign activity record in processing state
+        new_doc = {
+            "source_url": site.get("source_url"),
+            "generation_type": "redesign",
+            "status": "processing",
+            "created_at": datetime.utcnow(),
+            "admin_id": current_user.id,
+            "generated_html": source_html,
+            "extraction_data": site.get("extraction_data")
+        }
+        insert_result = await collection.insert_one(new_doc)
+        new_site_id = str(insert_result.inserted_id)
+
+    except Exception as e:
+        logger.error(f"Error in redesign prep: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
         # 2. Call Redesign Service
         from app.services.website_redesign_service import WebsiteRedesignService
         service = WebsiteRedesignService()
@@ -231,24 +308,42 @@ async def redesign_website(
         
         # 3. Update DB
         update_result = await collection.update_one(
-            {"_id": ObjectId(site_id)},
+            {"_id": ObjectId(new_site_id)},
             {
                 "$set": {
                     "redesigned_html": redesigned_html,
                     "token_usage_redesign": token_usage,
-                    "redesigned_at": datetime.utcnow()
+                    "redesigned_at": datetime.utcnow(),
+                    "status": "completed",
+                    "updated_at": datetime.utcnow()
                 }
             }
         )
         
         return {
-            "id": site_id,
+            "id": new_site_id,
             "redesigned_html": redesigned_html,
             "token_usage": token_usage
         }
 
     except Exception as e:
         logger.error(f"Error in redesign endpoint: {e}")
+        try:
+            await collection.update_one(
+                {"_id": ObjectId(new_site_id)},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": str(e),
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+        except Exception as db_err:
+            logger.error(f"Failed to update failed status in DB: {db_err}")
+            
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/edit/{site_id}")
@@ -275,6 +370,24 @@ async def edit_website(
         if not source_html:
              raise HTTPException(status_code=400, detail="No source HTML found for this site")
 
+        # Mark as processing
+        await collection.update_one(
+            {"_id": ObjectId(site_id)},
+            {
+                "$set": {
+                    "status": "processing",
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in edit prep: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
         # 2. Call Redesign Service (Edit Mode)
         from app.services.website_redesign_service import WebsiteRedesignService
         service = WebsiteRedesignService()
@@ -290,7 +403,9 @@ async def edit_website(
                 "$set": {
                     "redesigned_html": redesigned_html,
                     "token_usage_edit": token_usage,
-                    "edited_at": datetime.utcnow()
+                    "edited_at": datetime.utcnow(),
+                    "status": "completed",
+                    "updated_at": datetime.utcnow()
                 }
             }
         )
@@ -303,6 +418,22 @@ async def edit_website(
 
     except Exception as e:
         logger.error(f"Error in edit endpoint: {e}")
+        try:
+            await collection.update_one(
+                {"_id": ObjectId(site_id)},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": str(e),
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+        except Exception as db_err:
+            logger.error(f"Failed to update failed status in DB: {db_err}")
+            
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/publish/{site_id}")
@@ -330,7 +461,6 @@ async def publish_website(
              raise HTTPException(status_code=400, detail="No content to publish")
 
         # 2. Update the single active landing page document
-        # We use a fixed ID or query to ensure only one active landing page exists
         await landing_collection.update_one(
             {"type": "active_landing_page"},
             {
@@ -348,6 +478,28 @@ async def publish_website(
         return {"status": "success", "message": "Website published to /landing"}
     except Exception as e:
         logger.error(f"Error publishing site: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{site_id}", status_code=204)
+async def delete_site(
+    site_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a generated site record."""
+    try:
+        db_mongo = mongodb_settings.get_database()
+        collection = db_mongo["generated_sites"]
+        
+        result = await collection.delete_one({"_id": ObjectId(site_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Site record not found")
+            
+        return None
+    except Exception as e:
+        logger.error(f"Error deleting site: {e}")
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 

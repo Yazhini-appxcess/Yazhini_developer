@@ -1,5 +1,6 @@
 """MongoDB connection setup."""
 import os
+import socket
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import ConnectionFailure
 from loguru import logger
@@ -26,8 +27,9 @@ class MongoDBSettings:
         else:
             self.mongo_url = f"mongodb://{self.mongo_host}:{self.mongo_port}"
 
-        self.client: AsyncIOMotorClient | None = None
+        self.client = None
         self.db = None
+        self.is_fallback = False
 
     async def connect(self):
         """Connect to MongoDB."""
@@ -39,6 +41,18 @@ class MongoDBSettings:
                     "Please set MONGODB_DB_NAME environment variable."
                 )
 
+            # Test if real MongoDB port is open
+            is_open = False
+            try:
+                s = socket.create_connection((self.mongo_host, self.mongo_port), timeout=1.0)
+                s.close()
+                is_open = True
+            except Exception:
+                pass
+
+            if not is_open:
+                raise ConnectionFailure(f"Could not connect to {self.mongo_host}:{self.mongo_port} (port is closed)")
+
             self.client = AsyncIOMotorClient(
                 self.mongo_url,
                 serverSelectionTimeoutMS=5000,  # fail fast instead of hanging
@@ -46,20 +60,34 @@ class MongoDBSettings:
             # Test connection
             await self.client.admin.command("ping")
             self.db = self.client[self.mongo_db_name]
+            self.is_fallback = False
             logger.info(
                 f"Connected to MongoDB: {self.mongo_url}/{self.mongo_db_name}"
             )
             return True
         except (ConnectionFailure, ValueError, Exception) as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            self.client = None
-            self.db = None
-            return False
+            logger.warning(
+                f"Failed to connect to MongoDB: {e}. "
+                "Falling back to Mock MongoDB (JSON file storage in data/mock_db)"
+            )
+            try:
+                from app.core.mock_mongodb import MockAsyncIOMotorClient
+                self.client = MockAsyncIOMotorClient(self.mongo_url)
+                self.db = self.client[self.mongo_db_name]
+                self.is_fallback = True
+                logger.info("Mock MongoDB fallback database initialized successfully.")
+                return True
+            except Exception as mock_err:
+                logger.error(f"Failed to initialize Mock MongoDB: {mock_err}")
+                self.client = None
+                self.db = None
+                return False
 
     async def disconnect(self):
         """Disconnect from MongoDB."""
         if self.client:
-            self.client.close()
+            if not self.is_fallback:
+                self.client.close()
             self.client = None
             self.db = None
             logger.info("Disconnected from MongoDB")
@@ -73,10 +101,6 @@ class MongoDBSettings:
         object creation is synchronous here.
         """
         if self.db is None:
-            # Lazy fallback: create the client without the async ping so we
-            # don't block the event loop.  The first real async operation will
-            # surface any connection problem with a proper Motor/PyMongo error
-            # rather than our opaque "call connect() first" message.
             try:
                 logger.warning(
                     "MongoDB was not connected at startup – attempting lazy "
@@ -84,19 +108,40 @@ class MongoDBSettings:
                     self.mongo_url,
                     self.mongo_db_name,
                 )
-                self.client = AsyncIOMotorClient(
-                    self.mongo_url,
-                    serverSelectionTimeoutMS=5000,
-                )
-                self.db = self.client[self.mongo_db_name]
+                
+                # Check if real MongoDB port is open
+                is_open = False
+                try:
+                    s = socket.create_connection((self.mongo_host, self.mongo_port), timeout=1.0)
+                    s.close()
+                    is_open = True
+                except Exception:
+                    pass
+
+                if is_open:
+                    self.client = AsyncIOMotorClient(
+                        self.mongo_url,
+                        serverSelectionTimeoutMS=5000,
+                    )
+                    self.db = self.client[self.mongo_db_name]
+                    self.is_fallback = False
+                    logger.info("Lazy connection to real MongoDB established.")
+                else:
+                    logger.warning("Real MongoDB port is closed. Lazy falling back to Mock MongoDB.")
+                    from app.core.mock_mongodb import MockAsyncIOMotorClient
+                    self.client = MockAsyncIOMotorClient(self.mongo_url)
+                    self.db = self.client[self.mongo_db_name]
+                    self.is_fallback = True
             except Exception as e:
-                raise RuntimeError(
-                    f"MongoDB connection failed: {e}. "
-                    f"Make sure MongoDB is running on {self.mongo_url} "
-                    f"and MONGODB_HOST / MONGODB_PORT / MONGODB_DB_NAME are set correctly in .env"
-                ) from e
+                logger.error(f"Lazy fallback to real MongoDB failed: {e}. Using Mock MongoDB.")
+                from app.core.mock_mongodb import MockAsyncIOMotorClient
+                self.client = MockAsyncIOMotorClient()
+                self.db = self.client[self.mongo_db_name]
+                self.is_fallback = True
+                
         return self.db
 
 
 # Global MongoDB instance
 mongodb_settings = MongoDBSettings()
+
