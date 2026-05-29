@@ -11,7 +11,7 @@ from app.models.integration import IntegrationService
 from app.core.database import Base # Import Base to ensure mapper is registered if needed
 
 # Hardcoded PG URL
-DB_URL = "postgresql+asyncpg://postgres:vibi2003@localhost:5432/cormanleigh_bot"
+DB_URL = "postgresql+asyncpg://postgres:7373021545@localhost:5432/generic_bot"
 
 async def seed():
     print(f"Connecting to {DB_URL}...")
