@@ -278,9 +278,16 @@ class MockAsyncIOMotorCollection:
         matched = [d for d in docs if match_query(d, query)]
         return MockCursor(matched)
 
-    async def find_one(self, query=None):
+    async def find_one(self, query=None, *args, **kwargs):
         docs = _load_collection(self.name)
-        for d in docs:
+        matched = [d for d in docs if match_query(d, query)]
+        sort_fields = kwargs.get("sort")
+        if sort_fields:
+            if isinstance(sort_fields, tuple):
+                sort_fields = [sort_fields]
+            for key, direction in reversed(sort_fields):
+                matched.sort(key=lambda d: d.get(key) or "", reverse=(direction == -1))
+        for d in matched:
             if match_query(d, query):
                 return copy.deepcopy(d)
         return None
@@ -318,6 +325,23 @@ class MockAsyncIOMotorCollection:
                 matched_count = 1
                 modified_count = 1
                 
+            return UpdateResult(matched_count, modified_count)
+
+    async def update_many(self, query, update):
+        async with get_collection_lock(self.name):
+            docs = _load_collection(self.name)
+            matched_count = 0
+            modified_count = 0
+
+            for d in docs:
+                if match_query(d, query):
+                    matched_count += 1
+                    if update_doc(d, update):
+                        modified_count += 1
+
+            if matched_count > 0:
+                _save_collection(self.name, docs)
+
             return UpdateResult(matched_count, modified_count)
 
     async def delete_one(self, query):

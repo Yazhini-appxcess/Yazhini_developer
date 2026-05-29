@@ -17,6 +17,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/website-generator", tags=["website-generator"])
 
+
+def _get_site_html(site: dict) -> str:
+    """Return the publishable HTML for a generated site."""
+    return site.get("redesigned_html") or site.get("generated_html", "")
+
+
+async def _publish_landing_page(landing_collection, site_id: str, html_content: str, user_id: int):
+    await landing_collection.update_one(
+        {"type": "active_landing_page"},
+        {
+            "$set": {
+                "type": "active_landing_page",
+                "site_id": site_id,
+                "html_content": html_content,
+                "published_at": datetime.utcnow(),
+                "published_by": user_id
+            }
+        },
+        upsert=True
+    )
+
+
+async def _clear_landing_page(landing_collection):
+    await landing_collection.update_one(
+        {"type": "active_landing_page"},
+        {"$set": {"html_content": "", "site_id": None, "updated_at": datetime.utcnow()}},
+        upsert=True
+    )
+
 @router.post("/generate")
 async def generate_website(
     url: str = Body(..., embed=True),
@@ -38,6 +67,7 @@ async def generate_website(
             "source_url": url,
             "generation_type": "capture",
             "status": "processing",
+            "is_active": False,
             "created_at": datetime.utcnow(),
             "admin_id": current_user.id
         }
@@ -183,6 +213,9 @@ async def list_generated_sites(
                 site["status"] = "completed"
             if "generation_type" not in site:
                 site["generation_type"] = "redesign" if ("redesigned_html" in site or "redesigned_at" in site) else "capture"
+            # Ensure is_active is always present (default False for legacy records)
+            if "is_active" not in site:
+                site["is_active"] = False
                 
             # Exclude large HTML from list and store sizes
             if "generated_html" in site:
@@ -212,15 +245,16 @@ async def get_landing_content():
     print("DEBUG: get_landing_content called - PUBLIC ENDPOINT")
     try:
         db_mongo = mongodb_settings.get_database()
-        landing_collection = db_mongo["landing_page"]
-        
-        doc = await landing_collection.find_one({"type": "active_landing_page"})
-        
-        if not doc or "html_content" not in doc:
-            # Return a default placeholder if nothing is published
-            return {"html": "<!-- No landing page published yet -->"}
-            
-        return {"html": doc["html_content"]}
+        sites_collection = db_mongo["generated_sites"]
+
+        active_site = await sites_collection.find_one({"is_active": True}, sort=[("updated_at", -1), ("created_at", -1)])
+        if active_site:
+            html_content = _get_site_html(active_site)
+            if html_content:
+                return {"html": html_content}
+
+        # Return a default placeholder if no site has been explicitly activated.
+        return {"html": "<!-- No landing page published yet -->"}
     except Exception as e:
         logger.error(f"Error fetching landing content: {e}")
         # Don't crash the landing page, just return empty
@@ -249,6 +283,8 @@ async def get_site_detail(
             site["status"] = "completed"
         if "generation_type" not in site:
             site["generation_type"] = "redesign" if ("redesigned_html" in site or "redesigned_at" in site) else "capture"
+        if "is_active" not in site:
+            site["is_active"] = False
             
         return site
     except Exception as e:
@@ -283,6 +319,7 @@ async def redesign_website(
             "source_url": site.get("source_url"),
             "generation_type": "redesign",
             "status": "processing",
+            "is_active": False,
             "created_at": datetime.utcnow(),
             "admin_id": current_user.id,
             "generated_html": source_html,
@@ -409,6 +446,10 @@ async def edit_website(
                 }
             }
         )
+
+        if site.get("is_active", False):
+            landing_collection = db_mongo["landing_page"]
+            await _publish_landing_page(landing_collection, site_id, redesigned_html, current_user.id)
         
         return {
             "id": site_id,
@@ -455,30 +496,121 @@ async def publish_website(
         if not site:
             raise HTTPException(status_code=404, detail="Site not found")
             
+        if site.get("status") and site.get("status") != "completed":
+            raise HTTPException(status_code=400, detail="Only completed websites can be activated")
+
         # Prioritize redesigned HTML, fall back to generated
-        html_content = site.get("redesigned_html") or site.get("generated_html", "")
+        html_content = _get_site_html(site)
         if not html_content:
              raise HTTPException(status_code=400, detail="No content to publish")
 
-        # 2. Update the single active landing page document
-        await landing_collection.update_one(
-            {"type": "active_landing_page"},
-            {
-                "$set": {
-                    "type": "active_landing_page",
-                    "site_id": site_id,
-                    "html_content": html_content,
-                    "published_at": datetime.utcnow(),
-                    "published_by": current_user.id
-                }
-            },
-            upsert=True
+        # 2. Treat publishing as activation so public content and DB state match.
+        await sites_collection.update_many(
+            {},
+            {"$set": {"is_active": False, "updated_at": datetime.utcnow()}}
         )
+        await sites_collection.update_one(
+            {"_id": ObjectId(site_id)},
+            {"$set": {"is_active": True, "updated_at": datetime.utcnow()}}
+        )
+        await _publish_landing_page(landing_collection, site_id, html_content, current_user.id)
         
-        return {"status": "success", "message": "Website published to /landing"}
+        return {"status": "success", "id": site_id, "is_active": True, "message": "Website activated and published to /landing"}
     except Exception as e:
         logger.error(f"Error publishing site: {e}")
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/toggle-active/{site_id}")
+async def toggle_site_active(
+    site_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Activate a specific generated site and deactivate all others.
+    Also updates the public landing_page collection so /landing reflects the change.
+    """
+    try:
+        db_mongo = mongodb_settings.get_database()
+        sites_collection = db_mongo["generated_sites"]
+        landing_collection = db_mongo["landing_page"]
+
+        # 1. Fetch the target site
+        site = await sites_collection.find_one({"_id": ObjectId(site_id)})
+        if not site:
+            raise HTTPException(status_code=404, detail="Site not found")
+
+        if site.get("status") and site.get("status") != "completed":
+            raise HTTPException(status_code=400, detail="Only completed websites can be activated")
+
+        html_content = _get_site_html(site)
+        if not html_content:
+            raise HTTPException(status_code=400, detail="No content to activate")
+
+        # 2. Deactivate ALL sites first
+        await sites_collection.update_many(
+            {},
+            {"$set": {"is_active": False, "updated_at": datetime.utcnow()}}
+        )
+
+        # 3. Activate only the target site
+        await sites_collection.update_one(
+            {"_id": ObjectId(site_id)},
+            {"$set": {"is_active": True, "updated_at": datetime.utcnow()}}
+        )
+
+        # 4. Sync the landing_page collection with this site's HTML
+        await _publish_landing_page(landing_collection, site_id, html_content, current_user.id)
+
+        return {"id": site_id, "is_active": True, "message": "Site activated and published to /landing"}
+
+    except Exception as e:
+        logger.error(f"Error toggling site active: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/deactivate/{site_id}")
+async def deactivate_site(
+    site_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deactivate a specific generated site.
+    Clears the public landing_page so /landing shows the 'Coming Soon' placeholder.
+    """
+    try:
+        db_mongo = mongodb_settings.get_database()
+        sites_collection = db_mongo["generated_sites"]
+        landing_collection = db_mongo["landing_page"]
+
+        # 1. Check site exists
+        site = await sites_collection.find_one({"_id": ObjectId(site_id)})
+        if not site:
+            raise HTTPException(status_code=404, detail="Site not found")
+
+        # 2. Deactivate the site
+        await sites_collection.update_one(
+            {"_id": ObjectId(site_id)},
+            {"$set": {"is_active": False, "updated_at": datetime.utcnow()}}
+        )
+
+        # 3. Clear the landing page content only if this site was the active one
+        if site.get("is_active", False):
+            await _clear_landing_page(landing_collection)
+
+        return {"id": site_id, "is_active": False, "message": "Site deactivated"}
+
+    except Exception as e:
+        logger.error(f"Error deactivating site: {e}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.delete("/{site_id}", status_code=204)
 async def delete_site(
@@ -490,10 +622,18 @@ async def delete_site(
     try:
         db_mongo = mongodb_settings.get_database()
         collection = db_mongo["generated_sites"]
+        landing_collection = db_mongo["landing_page"]
+
+        site = await collection.find_one({"_id": ObjectId(site_id)})
+        if not site:
+            raise HTTPException(status_code=404, detail="Site record not found")
         
         result = await collection.delete_one({"_id": ObjectId(site_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Site record not found")
+
+        if site.get("is_active", False):
+            await _clear_landing_page(landing_collection)
             
         return None
     except Exception as e:
