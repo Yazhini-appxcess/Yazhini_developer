@@ -749,47 +749,6 @@ function TestSitePageImpl() {
                                 </div>
                             )}
 
-                            <div className="flex-1 bg-white/80 backdrop-blur-xl border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden flex flex-col">
-                                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 ml-1">
-                                    <Search className="w-3.5 h-3.5" />
-                                    Recent Generations
-                                </h3>
-                                <div className="flex-1 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
-                                    {loadingHistory ? (
-                                        <div className="p-4 text-center">
-                                            <Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-200" />
-                                        </div>
-                                    ) : (
-                                        pastSites.slice(0, 8).map((site) => (
-                                            <button
-                                                key={site.id}
-                                                onClick={() => viewPastSite(site.id)}
-                                                className={`w-full p-4 rounded-2xl border text-left transition-all ${result?.id === site.id
-                                                    ? "bg-primary text-white border-primary shadow-lg shadow-primary/20 scale-[1.02]"
-                                                    : "bg-slate-50 border-slate-100 hover:border-primary/30"
-                                                    }`}
-                                            >
-                                                <p className={`text-xs font-bold truncate mb-1 ${result?.id === site.id ? "text-white" : "text-slate-900"}`}>
-                                                    {site.source_url.replace(/^https?:\/\//, '')}
-                                                </p>
-                                                <p className={`text-[10px] font-bold opacity-60 ${result?.id === site.id ? "text-white" : "text-slate-400"}`}>
-                                                    {new Date(site.created_at).toLocaleDateString()}
-                                                </p>
-                                                {site.generation_type === "redesign" && (
-                                                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${result?.id === site.id ? "bg-white/20 text-white" : "bg-violet-100 text-violet-600"}`}>
-                                                        <Sparkles className="w-2 h-2" /> Redesigned
-                                                    </div>
-                                                )}
-                                                {site.redesigned_at && site.generation_type !== "redesign" && (
-                                                    <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${result?.id === site.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-600"}`}>
-                                                        <Sparkles className="w-2 h-2" /> Redesigned
-                                                    </div>
-                                                )}
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
                         </div>
 
                         {/* Preview Panel */}
