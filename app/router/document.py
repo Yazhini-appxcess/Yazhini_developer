@@ -160,25 +160,36 @@ async def upload_document(
             # Chunk text
             chunks_data = processor.chunk_text(text_content)
 
-            # Generate embeddings
+            # Generate and store embeddings in batches so large documents do not
+            # require all chunk embeddings in memory at once.
             embedding_service = get_embedding_service()
-            chunk_texts = [chunk["text"] for chunk in chunks_data]
-            embeddings = embedding_service.generate_embeddings_batch(chunk_texts)
-
-            # Store chunks with embeddings
             vector_store = VectorStore()
-            for i, (chunk_data, embedding) in enumerate(zip(chunks_data, embeddings)):
-                await vector_store.store_chunk(
-                    db=db,
-                    document_id=document.id,
-                    chunk_index=chunk_data["index"],
-                    text=chunk_data["text"],
-                    embedding=embedding,
-                    agent_type=document.agent_type,
-                    metadata={
-                        "start_char": chunk_data["start_char"],
-                        "end_char": chunk_data["end_char"]
-                    }
+            embedding_batch_size = 32
+            for batch_start in range(0, len(chunks_data), embedding_batch_size):
+                chunk_batch = chunks_data[batch_start:batch_start + embedding_batch_size]
+                chunk_texts = [chunk["text"] for chunk in chunk_batch]
+                embeddings = embedding_service.generate_embeddings_batch(chunk_texts)
+
+                for chunk_data, embedding in zip(chunk_batch, embeddings):
+                    await vector_store.store_chunk(
+                        db=db,
+                        document_id=document.id,
+                        chunk_index=chunk_data["index"],
+                        text=chunk_data["text"],
+                        embedding=embedding,
+                        agent_type=document.agent_type,
+                        metadata={
+                            "start_char": chunk_data["start_char"],
+                            "end_char": chunk_data["end_char"]
+                        }
+                    )
+
+                logger.info(
+                    "Indexed document %s chunks %s-%s of %s",
+                    document.id,
+                    batch_start + 1,
+                    min(batch_start + len(chunk_batch), len(chunks_data)),
+                    len(chunks_data),
                 )
 
             document.processed = True

@@ -211,6 +211,70 @@ class DocumentProcessor:
         return chunks
 
     @staticmethod
+    def _passes_luhn_check(value: str) -> bool:
+        digits = [int(char) for char in value if char.isdigit()]
+        if not 13 <= len(digits) <= 19:
+            return False
+
+        checksum = 0
+        parity = len(digits) % 2
+        for index, digit in enumerate(digits):
+            if index % 2 == parity:
+                digit *= 2
+                if digit > 9:
+                    digit -= 9
+            checksum += digit
+        return checksum % 10 == 0
+
+    @staticmethod
+    def _has_institutional_identifier_context(context: str) -> bool:
+        import re
+
+        institutional_keywords = [
+            r"\broll\s*(?:no\.?|number)\b",
+            r"\bregister\s*(?:no\.?|number)\b",
+            r"\bregistration\s*(?:no\.?|number)\b",
+            r"\bstudent\s*id\b",
+            r"\bemployee\s*id\b",
+            r"\buniversity\s*id\b",
+            r"\bcandidate\s*id\b",
+            r"\bapplication\s*(?:no\.?|number)\b",
+        ]
+        return any(re.search(pattern, context, re.IGNORECASE) for pattern in institutional_keywords)
+
+    @staticmethod
+    def _has_payment_card_context(context: str) -> bool:
+        import re
+
+        payment_keywords = [
+            r"credit\s*card",
+            r"debit\s*card",
+            r"card\s*(?:number|no)",
+            r"payment\s*card",
+            r"\bcvv\b",
+            r"\bcvc\b",
+            r"\bvisa\b",
+            r"\bmastercard\b",
+            r"\bamex\b",
+            r"american\s*express",
+        ]
+        return any(re.search(pattern, context, re.IGNORECASE) for pattern in payment_keywords)
+
+    @staticmethod
+    def _is_credit_card_match(line: str, start: int, end: int, candidate: str) -> bool:
+        context_start = max(0, start - 60)
+        context_end = min(len(line), end + 60)
+        context = line[context_start:context_end]
+
+        if (
+            DocumentProcessor._has_institutional_identifier_context(context)
+            and not DocumentProcessor._has_payment_card_context(context)
+        ):
+            return False
+
+        return DocumentProcessor._passes_luhn_check(candidate)
+
+    @staticmethod
     def detect_sensitive_data(text: str) -> list[str]:
         """
         Detect sensitive data (PII, secrets) in text.
@@ -222,11 +286,11 @@ class DocumentProcessor:
         # Patterns for sensitive data
         patterns = {
             "Email Address": r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-            "Credit Card Number": r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
             "Social Security Number (SSN)": r'\b\d{3}-\d{2}-\d{4}\b',
             "API Key / Secret": r'(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)[\s:=]+([a-zA-Z0-9_\-]{20,})',
             # "Phone Number": r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b' # Too many false positives often
         }
+        credit_card_pattern = r'(?<!\d)(?:\d[ -]?){13,19}(?!\d)'
         
         lines = text.split('\n')
         for i, line in enumerate(lines):
@@ -238,6 +302,14 @@ class DocumentProcessor:
                     end = min(len(line), match.end() + 20)
                     snippet = line[start:end].strip()
                     warnings.append(f"Line {i+1}: Potential {label} detected: '...{snippet}...'")
+
+            for match in re.finditer(credit_card_pattern, line):
+                if not DocumentProcessor._is_credit_card_match(line, match.start(), match.end(), match.group()):
+                    continue
+                start = max(0, match.start() - 20)
+                end = min(len(line), match.end() + 20)
+                snippet = line[start:end].strip()
+                warnings.append(f"Line {i+1}: Potential Credit Card Number detected: '...{snippet}...'")
                     
         # Limit total warnings to avoid overwhelming response
         return warnings[:10]

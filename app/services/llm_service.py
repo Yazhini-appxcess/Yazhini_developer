@@ -82,10 +82,10 @@ class LLMService:
                 "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             }
         
-        # Build context from chunks (without document names)
+        # Build grounded context from chunks and preserve source labels for citations.
         context_text = "\n\n".join([
-            chunk.get('text', '')
-            for chunk in context_chunks
+            f"[Source {index}: {chunk.get('source', 'Uploaded document')}]\n{chunk.get('text', '')}"
+            for index, chunk in enumerate(context_chunks, 1)
         ])
         
         if not system_prompt:
@@ -96,18 +96,28 @@ class LLMService:
         
         # Determine model and temperature from config or defaults
         model = self.model
-        temperature = 0.7
+        temperature = 0.2
         
         if config:
             model = getattr(config, 'model', self.model)
-            temperature = getattr(config, 'temperature', 0.7)
+            temperature = min(getattr(config, 'temperature', 0.2), 0.3)
         
         # Build messages
         messages = [
-            {"role": "system", "content": system_prompt},
+            {
+                "role": "system",
+                "content": (
+                    f"{system_prompt}\n\n"
+                    "You are a document-grounded assistant. Answer only from the provided uploaded-document context. "
+                    "If the answer is not explicitly supported by the context, respond exactly: "
+                    "\"I could not find relevant information in the uploaded documents.\" "
+                    "Do not use outside knowledge, guesses, or generic filler. "
+                    "When answering, cite the supporting source labels in a short Sources line."
+                )
+            },
             {
                 "role": "user",
-                "content": f"""Information about Leucadia (from documents and scraped content):
+                "content": f"""Uploaded document context:
 {context_text}
 
 Question: {query}"""

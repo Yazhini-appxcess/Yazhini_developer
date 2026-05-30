@@ -2,9 +2,10 @@ import logging
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 import numpy as np
 
-from app.models.document import DocumentChunk
+from app.models.document import Document, DocumentChunk
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +51,17 @@ class VectorStore:
         Search for similar chunks using cosine similarity.
         Returns list of (chunk, similarity_score) tuples.
         """
-        # Get all chunks with embeddings for the specific agent type
-        # Internal agent can see both internal and external data
-        query = select(DocumentChunk).where(DocumentChunk.embedding.isnot(None))
+        # Get processed uploaded-document chunks with embeddings for the specific agent type.
+        # Internal agent can see both internal and external data.
+        query = (
+            select(DocumentChunk)
+            .join(Document, DocumentChunk.document_id == Document.id)
+            .options(selectinload(DocumentChunk.document))
+            .where(
+                DocumentChunk.embedding.isnot(None),
+                Document.processed == True,
+            )
+        )
         
         if agent_type in ["internal", "all"]:
             query = query.where(DocumentChunk.agent_type.in_(["internal", "external"]))
@@ -91,27 +100,6 @@ class VectorStore:
             top_scores = [f"{score:.3f}" for _, score in similarities[:5]]
             logger.debug(f"Top 5 similarity scores: {', '.join(top_scores)}")
 
-        # If threshold is very low (<= 0.1), return top N regardless of score
-        # For very low thresholds (<= 0.05), always return top results
-        if threshold <= 0.05:
-            return similarities[:limit]
-        elif threshold <= 0.1:
-            # For low thresholds, return top N but log scores
-            return similarities[:limit]
-        else:
-            # Filter by threshold, but ensure we get at least some results
-            filtered = [(chunk, score) for chunk, score in similarities if score >= threshold]
-            if filtered:
-                return filtered[:limit]
-            else:
-                # If no results meet threshold, return top results anyway (for thresholds <= 0.3)
-                # This ensures we always return something if chunks exist
-                if threshold <= 0.3:
-                    logger.info(f"No results above threshold {threshold}, returning top {limit} results anyway (scores: {[f'{s:.3f}' for _, s in similarities[:limit]]})")
-                    return similarities[:limit]
-                # For higher thresholds, still return top 3 if available
-                if len(similarities) >= 3:
-                    logger.info(f"Threshold {threshold} too high, returning top 3 results (scores: {[f'{s:.3f}' for _, s in similarities[:3]]})")
-                    return similarities[:3]
-                return []
+        filtered = [(chunk, score) for chunk, score in similarities if score >= threshold]
+        return filtered[:limit]
 

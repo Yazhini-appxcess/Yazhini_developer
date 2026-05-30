@@ -185,67 +185,44 @@ async def bot_chat(
                     logger.error(f"Error integrating Zoho data: {ze}")
             
             try:
-                # Try multiple query variations to improve matching
-                query_variations = [original_query]
-                
-                # Add Leucadia context if not present
-                query_lower = original_query.lower()
-                if 'leucadia' not in query_lower:
-                    query_variations.append(f"{original_query} Leucadia")
-                    query_variations.append(f"Leucadia {original_query}")
-                
                 similar_chunks = []
-                best_query = original_query
-                
-                # Try each query variation with progressively lower thresholds
-                for query_variant in query_variations:
-                    query_embedding = embedding_service.generate_embedding(query_variant)
-                    
-                    # Try with multiple thresholds
-                    for threshold in [0.2, 0.15, 0.1]:
-                        logger.info(f"Searching [{bot_request.agent_type}] with query: '{query_variant}', threshold: {threshold}")
-                        chunks = await vector_store.search_similar(
-                            db,
-                            query_embedding,
-                            limit=10,
-                            threshold=threshold,
-                            agent_type=bot_request.agent_type
-                        )
-                        
-                        if chunks:
-                            similar_chunks = chunks
-                            best_query = query_variant
-                            logger.info(f"Found {len(chunks)} [{bot_request.agent_type}] chunks with query '{query_variant}' at threshold {threshold}")
-                            break
-                    
-                    if similar_chunks:
-                        break
-                
-                # If still no results, try with very low threshold (0.01) ONLY for the requested agent type
-                if not similar_chunks:
-                    logger.info(f"No results found for {bot_request.agent_type}, trying with very low threshold fallback")
-                    fallback_embedding = embedding_service.generate_embedding(query_variations[0])
-                    similar_chunks = await vector_store.search_similar(
+
+                query_embedding = embedding_service.generate_embedding(original_query)
+
+                # Search uploaded document chunks with bounded thresholds.
+                # Do not return arbitrary top chunks when similarity is too weak.
+                for threshold in [0.28, 0.22, 0.18]:
+                    logger.info(f"Searching [{bot_request.agent_type}] uploaded documents with threshold: {threshold}")
+                    chunks = await vector_store.search_similar(
                         db,
-                        fallback_embedding,
+                        query_embedding,
                         limit=10,
-                        threshold=0.01,
+                        threshold=threshold,
                         agent_type=bot_request.agent_type
                     )
 
+                    if chunks:
+                        similar_chunks = chunks
+                        logger.info(f"Found {len(chunks)} [{bot_request.agent_type}] chunks at threshold {threshold}")
+                        break
+
+                    if similar_chunks:
+                        break
+
                 # Format context chunks and LOG their source type for verification
                 if similar_chunks:
-                    similar_chunks = similar_chunks[:5]
+                    similar_chunks = similar_chunks[:6]
                     context_chunks = []
                     for chunk, similarity in similar_chunks:
                         # Security check: External assistant must NOT see internal data
                         if bot_request.agent_type == "external" and chunk.agent_type == "internal":
                             logger.error("SECURITY BREACH: Found internal chunk in external search!")
                             continue
+                        document_name = chunk.document.name if getattr(chunk, "document", None) else f"Document {chunk.document_id}"
                         
                         context_chunks.append({
                             "text": chunk.text,
-                            "source": f"Document {chunk.document_id}",
+                            "source": f"{document_name}, chunk {chunk.chunk_index + 1}",
                             "similarity": similarity
                         })
                     
@@ -258,10 +235,7 @@ async def bot_chat(
             
             # If no context found, return a professional internal assistant message
             if not context_chunks:
-                if bot_request.agent_type == "internal":
-                    ai_response_text = "I couldn't find specific data related to your query in our internal records or public documentation. Please verify the information you are looking for."
-                else:
-                    ai_response_text = "I couldn't find specific details regarding your question in our current records. For exact information, please contact our office directly at 760.753.0155."
+                ai_response_text = "I could not find relevant information in the uploaded documents."
                 
                 # Calculate and log token usage locally for fallback
                 try:
