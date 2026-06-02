@@ -21,6 +21,7 @@ export default function BotPage() {
             className="w-full h-full border-none shadow-none rounded-none"
             style={{ height: '100%', width: '100%' }}
             initialView="chat"
+            agentType="external"
           />
         </div>
       </div>

@@ -225,7 +225,7 @@ export default function AIChatInterface({
   const checkAndLoadOngoingConversation = async () => {
     if (!sessionId) return false;
     try {
-      const res = await fetch(API_ENDPOINTS.conversations.listUser(sessionId));
+      const res = await fetch(`${API_ENDPOINTS.conversations.listUser(sessionId)}&agent_type=${agentType}`);
       const data = await res.json();
       if (data.conversations && data.conversations.length > 0) {
         const ongoing = data.conversations.find((c: Conversation) => !c.ended);
